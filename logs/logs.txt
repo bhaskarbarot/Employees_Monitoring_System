@@ -1,0 +1,197 @@
+[2026-05-08 13:07:12]  [PHONE_USAGE]  10 min 23 sec  —  The employee is using their phone while standing in an office environment, surrounded by other employees.  |  photo: logs/photos/PHONE_USAGE_20260508_130712.jpg
+[2026-05-08 13:07:14]  [SLEEPING]  2 min 25 sec  —  The employee's posture suggests they are sleeping because they are leaning back in their chair with their eyes closed.  |  photo: logs/photos/SLEEPING_20260508_130714.jpg
+[2026-05-08 13:07:16]  [NOT_IN_SEAT]  20 min 05 sec  —  The employee seat appears empty because it's being used for an unusual purpose.  |  photo: logs/photos/NOT_IN_SEAT_20260508_130716.jpg
+[2026-05-08 13:07:19]  [TIME_WASTING]  11 min 13 sec  —  Instead of working, the employee is watching a video game on a large screen television.  |  photo: logs/photos/TIME_WASTING_20260508_130719.jpg
+[2026-05-08 14:12:37]  [PHONE_USAGE]  5m 20s  —  Taking a picture of the computer desk.  |  photo: logs/photos/PHONE_USAGE_20260508_141237.jpg
+[2026-05-08 14:12:48]  [SLEEPING]  2m 15s  —  The employee's posture suggests they are sleeping because they are leaning forward and resting their head on their hand, which is a common posture for sleeping.  |  photo: logs/photos/SLEEPING_20260508_141248.jpg
+[2026-05-08 14:12:51]  [NOT_IN_SEAT]  10m 50s  —  The employee seat appears empty because it's an empty cubicle.  |  photo: logs/photos/NOT_IN_SEAT_20260508_141251.jpg
+[2026-05-08 14:12:53]  [TIME_WASTING]  10m 20s  —  The employee is playing a video game instead of working.  |  photo: logs/photos/TIME_WASTING_20260508_141253.jpg
+[2026-05-08 14:25:05]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_142505.jpg
+[2026-05-08 14:25:42]  [PHONE_USAGE]  0m 00s  —  The employee is standing in a room with other people, using their phone to record a video.  |  photo: logs/photos/PHONE_USAGE_20260508_142542.jpg
+[2026-05-08 14:26:39]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a photo of a group of people working together in an office.  |  photo: logs/photos/PHONE_USAGE_20260508_142639.jpg
+[2026-05-08 14:27:20]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to look at the computer screen.  |  photo: logs/photos/PHONE_USAGE_20260508_142720.jpg
+[2026-05-08 14:28:15]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while standing in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_142815.jpg
+[2026-05-08 14:29:03]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a picture.  |  photo: logs/photos/PHONE_USAGE_20260508_142903.jpg
+[2026-05-08 14:29:36]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone for a video call in a work setting.  |  photo: logs/photos/PHONE_USAGE_20260508_142936.jpg
+[2026-05-08 14:37:20]  [PHONE_USAGE]  0m 00s  —  Employee is talking on the phone.  |  photo: logs/photos/PHONE_USAGE_20260508_143720.jpg
+[2026-05-08 14:38:07]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a picture of their computer monitor.  |  photo: logs/photos/PHONE_USAGE_20260508_143807.jpg
+[2026-05-08 14:38:56]  [PHONE_USAGE]  0m 00s  —  The employee is sitting in an office, looking at their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_143856.jpg
+[2026-05-08 14:48:54]  [PHONE_USAGE]  0m 00s  —  An employee is using their phone in a bustling office space.  |  photo: logs/photos/PHONE_USAGE_20260508_144854.jpg
+[2026-05-08 14:49:27]  [PHONE_USAGE]  0m 00s  —  The employee is on the phone, possibly taking a picture or videoing the computer screens.  |  photo: logs/photos/PHONE_USAGE_20260508_144927.jpg
+[2026-05-08 14:50:02]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a photo of their coworkers at a conference table.  |  photo: logs/photos/PHONE_USAGE_20260508_145002.jpg
+[2026-05-08 14:50:33]  [PHONE_USAGE]  0m 00s  —  One employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_145033.jpg
+[2026-05-08 14:51:18]  [PHONE_USAGE]  0m 00s  —  The employee is looking at something on their phone, possibly a message, an email, or a notification, while sitting in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_145118.jpg
+[2026-05-08 14:51:51]  [PHONE_USAGE]  0m 00s  —  An employee in a cubicle has a phone held up in front of them, potentially recording or capturing something.  |  photo: logs/photos/PHONE_USAGE_20260508_145151.jpg
+[2026-05-08 14:52:21]  [PHONE_USAGE]  0m 00s  —  This employee is holding a phone.  |  photo: logs/photos/PHONE_USAGE_20260508_145221.jpg
+[2026-05-08 15:01:33]  [PHONE_USAGE]  0m 00s  —  One employee is using their phone while others are working at their computers.  |  photo: logs/photos/PHONE_USAGE_20260508_150133.jpg
+[2026-05-08 15:03:52]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting at a desk.  |  photo: logs/photos/PHONE_USAGE_20260508_150352.jpg
+[2026-05-08 15:04:22]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while working at the office.  |  photo: logs/photos/PHONE_USAGE_20260508_150422.jpg
+[2026-05-08 15:04:57]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone to take a photo of the room they are in.  |  photo: logs/photos/PHONE_USAGE_20260508_150457.jpg
+[2026-05-08 15:05:29]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo with a phone.  |  photo: logs/photos/PHONE_USAGE_20260508_150529.jpg
+[2026-05-08 15:06:02]  [PHONE_USAGE]  0m 00s  —  The employee is sitting at a desk in the office, using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_150602.jpg
+[2026-05-08 15:06:38]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_150638.jpg
+[2026-05-08 15:07:12]  [PHONE_USAGE]  0m 00s  —  This employee is taking a picture of the group of people in the room.  |  photo: logs/photos/PHONE_USAGE_20260508_150712.jpg
+[2026-05-08 15:07:45]  [PHONE_USAGE]  0m 00s  —  The employee is talking on the phone while sitting at a table.  |  photo: logs/photos/PHONE_USAGE_20260508_150745.jpg
+[2026-05-08 15:08:22]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to capture an image of another employee using their laptop.  |  photo: logs/photos/PHONE_USAGE_20260508_150822.jpg
+[2026-05-08 15:08:53]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to capture a photo of their coworkers in a meeting.  |  photo: logs/photos/PHONE_USAGE_20260508_150853.jpg
+[2026-05-08 15:09:29]  [PHONE_USAGE]  0m 00s  —  The employee is recording a video of the office meeting.  |  photo: logs/photos/PHONE_USAGE_20260508_150929.jpg
+[2026-05-08 15:20:45]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while standing at the computer.  |  photo: logs/photos/PHONE_USAGE_20260508_152045.jpg
+[2026-05-08 15:22:19]  [PHONE_USAGE]  0m 00s  —  The employee is playing a game on their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_152219.jpg
+[2026-05-08 15:24:00]  [PHONE_USAGE]  0m 00s  —  Employee is working on their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_152400.jpg
+[2026-05-08 15:25:52]  [PHONE_USAGE]  0m 00s  —  The employee is working on their phone while sitting at a desk.  |  photo: logs/photos/PHONE_USAGE_20260508_152552.jpg
+[2026-05-08 15:43:56]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154356.jpg
+[2026-05-08 15:43:56]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154356.jpg
+[2026-05-08 15:43:57]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154357.jpg
+[2026-05-08 15:43:58]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154358.jpg
+[2026-05-08 15:43:59]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154359.jpg
+[2026-05-08 15:44:26]  [PHONE_USAGE]  0m 00s  —  The employee is taking a picture of the office with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154426.jpg
+[2026-05-08 15:44:27]  [PHONE_USAGE]  0m 00s  —  The employee is taking a picture of the office with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154427.jpg
+[2026-05-08 15:44:27]  [PHONE_USAGE]  0m 00s  —  The employee is taking a picture of the office with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154427.jpg
+[2026-05-08 15:44:28]  [PHONE_USAGE]  0m 00s  —  The employee is taking a picture of the office with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154428.jpg
+[2026-05-08 15:44:36]  [PHONE_USAGE]  0m 00s  —  The employee is not using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154436.jpg
+[2026-05-08 15:44:41]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while at work.  |  photo: logs/photos/PHONE_USAGE_20260508_154441.jpg
+[2026-05-08 15:44:48]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone, but I cannot see the screen to determine the content they are viewing or interacting with.  |  photo: logs/photos/PHONE_USAGE_20260508_154448.jpg
+[2026-05-08 15:44:49]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone, but I cannot see the screen to determine the content they are viewing or interacting with.  |  photo: logs/photos/PHONE_USAGE_20260508_154449.jpg
+[2026-05-08 15:44:57]  [PHONE_USAGE]  0m 00s  —  The employee is checking their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154457.jpg
+[2026-05-08 15:44:57]  [PHONE_USAGE]  0m 00s  —  The employee is checking their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154457.jpg
+[2026-05-08 15:44:58]  [PHONE_USAGE]  0m 00s  —  The employee is checking their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154458.jpg
+[2026-05-08 15:45:07]  [PHONE_USAGE]  0m 00s  —  The employee is looking at their phone while sitting in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154507.jpg
+[2026-05-08 15:45:09]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone in the conference room while the others are working.  |  photo: logs/photos/PHONE_USAGE_20260508_154509.jpg
+[2026-05-08 15:45:11]  [PHONE_USAGE]  0m 00s  —  Taking a photo of a computer monitor.  |  photo: logs/photos/PHONE_USAGE_20260508_154511.jpg
+[2026-05-08 15:45:13]  [PHONE_USAGE]  0m 00s  —  Taking a photo of a computer monitor.  |  photo: logs/photos/PHONE_USAGE_20260508_154513.jpg
+[2026-05-08 15:45:18]  [PHONE_USAGE]  0m 00s  —  The employee is talking on the phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154518.jpg
+[2026-05-08 15:45:23]  [PHONE_USAGE]  0m 00s  —  The employee is talking on the phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154523.jpg
+[2026-05-08 15:45:26]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while standing near a coworker.  |  photo: logs/photos/PHONE_USAGE_20260508_154526.jpg
+[2026-05-08 15:45:27]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while standing near a coworker.  |  photo: logs/photos/PHONE_USAGE_20260508_154527.jpg
+[2026-05-08 15:45:27]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while standing near a coworker.  |  photo: logs/photos/PHONE_USAGE_20260508_154527.jpg
+[2026-05-08 15:45:28]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while standing near a coworker.  |  photo: logs/photos/PHONE_USAGE_20260508_154528.jpg
+[2026-05-08 15:45:28]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone, taking a photo.  |  photo: logs/photos/PHONE_USAGE_20260508_154528.jpg
+[2026-05-08 15:45:28]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone, taking a photo.  |  photo: logs/photos/PHONE_USAGE_20260508_154528.jpg
+[2026-05-08 15:45:37]  [PHONE_USAGE]  0m 00s  —  The employee is holding a phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154537.jpg
+[2026-05-08 15:45:38]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to communicate with others or take a photo of the office scene.  |  photo: logs/photos/PHONE_USAGE_20260508_154538.jpg
+[2026-05-08 15:45:55]  [PHONE_USAGE]  0m 00s  —  The employee is taking a selfie with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154555.jpg
+[2026-05-08 15:45:57]  [PHONE_USAGE]  0m 00s  —  An employee is using their phone in a group setting, possibly for communication or entertainment.  |  photo: logs/photos/PHONE_USAGE_20260508_154557.jpg
+[2026-05-08 15:45:57]  [PHONE_USAGE]  0m 00s  —  An employee is using their phone in a group setting, possibly for communication or entertainment.  |  photo: logs/photos/PHONE_USAGE_20260508_154557.jpg
+[2026-05-08 15:45:58]  [PHONE_USAGE]  0m 00s  —  An employee is using their phone in a group setting, possibly for communication or entertainment.  |  photo: logs/photos/PHONE_USAGE_20260508_154558.jpg
+[2026-05-08 15:45:58]  [PHONE_USAGE]  0m 00s  —  An employee is using their phone in a group setting, possibly for communication or entertainment.  |  photo: logs/photos/PHONE_USAGE_20260508_154558.jpg
+[2026-05-08 15:46:00]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photograph of a group of people using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154600.jpg
+[2026-05-08 15:46:03]  [PHONE_USAGE]  0m 00s  —  The employee is holding their phone to take a picture.  |  photo: logs/photos/PHONE_USAGE_20260508_154603.jpg
+[2026-05-08 15:46:11]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154611.jpg
+[2026-05-08 15:46:13]  [PHONE_USAGE]  0m 00s  —  The employee is on a phone call.  |  photo: logs/photos/PHONE_USAGE_20260508_154613.jpg
+[2026-05-08 15:46:21]  [PHONE_USAGE]  0m 00s  —  The employee is looking at a phone screen, possibly using it for work purposes or communication.  |  photo: logs/photos/PHONE_USAGE_20260508_154621.jpg
+[2026-05-08 15:46:26]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154626.jpg
+[2026-05-08 15:46:27]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154627.jpg
+[2026-05-08 15:46:28]  [PHONE_USAGE]  0m 00s  —  The employee is on their phone, likely engaged in a conversation or browsing social media.  |  photo: logs/photos/PHONE_USAGE_20260508_154628.jpg
+[2026-05-08 15:46:28]  [PHONE_USAGE]  0m 00s  —  The employee is on their phone, likely engaged in a conversation or browsing social media.  |  photo: logs/photos/PHONE_USAGE_20260508_154628.jpg
+[2026-05-08 15:46:29]  [PHONE_USAGE]  0m 00s  —  The employee is on their phone, likely engaged in a conversation or browsing social media.  |  photo: logs/photos/PHONE_USAGE_20260508_154629.jpg
+[2026-05-08 15:46:37]  [PHONE_USAGE]  0m 00s  —  Phone on the table.  |  photo: logs/photos/PHONE_USAGE_20260508_154637.jpg
+[2026-05-08 15:46:38]  [PHONE_USAGE]  0m 00s  —  Phone on the table.  |  photo: logs/photos/PHONE_USAGE_20260508_154638.jpg
+[2026-05-08 15:46:41]  [PHONE_USAGE]  0m 00s  —  An employee is using their phone to take a photo in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154641.jpg
+[2026-05-08 15:46:43]  [PHONE_USAGE]  0m 00s  —  An employee is using their phone to take a photo in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154643.jpg
+[2026-05-08 15:46:50]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while standing in a room with multiple people, chairs, and computers.  |  photo: logs/photos/PHONE_USAGE_20260508_154650.jpg
+[2026-05-08 15:46:52]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while standing in a room with multiple people, chairs, and computers.  |  photo: logs/photos/PHONE_USAGE_20260508_154652.jpg
+[2026-05-08 15:46:54]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while standing in a room with multiple people, chairs, and computers.  |  photo: logs/photos/PHONE_USAGE_20260508_154654.jpg
+[2026-05-08 15:46:56]  [PHONE_USAGE]  0m 00s  —  This employee is using a phone to record the people in the room.  |  photo: logs/photos/PHONE_USAGE_20260508_154656.jpg
+[2026-05-08 15:46:57]  [PHONE_USAGE]  0m 00s  —  The employee is talking on the phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154657.jpg
+[2026-05-08 15:46:58]  [PHONE_USAGE]  0m 00s  —  The employee is on a phone call in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154658.jpg
+[2026-05-08 15:46:58]  [PHONE_USAGE]  0m 00s  —  The employee is on a phone call in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154658.jpg
+[2026-05-08 15:46:59]  [PHONE_USAGE]  0m 00s  —  The employee is holding up their phone in the office, possibly showing something on the screen to the others.  |  photo: logs/photos/PHONE_USAGE_20260508_154659.jpg
+[2026-05-08 15:47:08]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo of a group of people sitting at desks in a conference room.  |  photo: logs/photos/PHONE_USAGE_20260508_154708.jpg
+[2026-05-08 15:47:12]  [PHONE_USAGE]  0m 00s  —  The employee is taking a picture of the room.  |  photo: logs/photos/PHONE_USAGE_20260508_154712.jpg
+[2026-05-08 15:47:18]  [PHONE_USAGE]  0m 00s  —  This employee is holding the phone up in the air, possibly capturing a photo or recording a video.  |  photo: logs/photos/PHONE_USAGE_20260508_154718.jpg
+[2026-05-08 15:47:19]  [PHONE_USAGE]  0m 00s  —  This employee is holding the phone up in the air, possibly capturing a photo or recording a video.  |  photo: logs/photos/PHONE_USAGE_20260508_154719.jpg
+[2026-05-08 15:47:26]  [PHONE_USAGE]  0m 00s  —  This employee is taking a photo of the office space.  |  photo: logs/photos/PHONE_USAGE_20260508_154726.jpg
+[2026-05-08 15:47:26]  [PHONE_USAGE]  0m 00s  —  This employee is taking a photo of the office space.  |  photo: logs/photos/PHONE_USAGE_20260508_154726.jpg
+[2026-05-08 15:47:28]  [PHONE_USAGE]  0m 00s  —  This employee is taking a photo of the office space.  |  photo: logs/photos/PHONE_USAGE_20260508_154728.jpg
+[2026-05-08 15:47:29]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone to take a photo of their colleagues in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154729.jpg
+[2026-05-08 15:47:29]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone to take a photo of their colleagues in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154729.jpg
+[2026-05-08 15:47:29]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone to take a photo of their colleagues in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154729.jpg
+[2026-05-08 15:47:29]  [PHONE_USAGE]  0m 00s  —  This employee is taking a photo or recording a video of their colleagues in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154729.jpg
+[2026-05-08 15:47:35]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a photo of the office meeting.  |  photo: logs/photos/PHONE_USAGE_20260508_154735.jpg
+[2026-05-08 15:47:36]  [PHONE_USAGE]  0m 00s  —  An employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154736.jpg
+[2026-05-08 15:47:39]  [PHONE_USAGE]  0m 00s  —  The employee is taking a picture of the computer screen in front of them.  |  photo: logs/photos/PHONE_USAGE_20260508_154739.jpg
+[2026-05-08 15:47:45]  [SLEEPING]  2m 00s  —  The employee appears to be sleeping, suggesting a long day at work.  |  photo: logs/photos/SLEEPING_20260508_154745.jpg
+[2026-05-08 15:47:46]  [SLEEPING]  2m 00s  —  The employee appears to be sleeping, suggesting a long day at work.  |  photo: logs/photos/SLEEPING_20260508_154746.jpg
+[2026-05-08 15:47:49]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo of their coworkers with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154749.jpg
+[2026-05-08 15:47:49]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo of their coworkers with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154749.jpg
+[2026-05-08 15:47:56]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone to take a picture of a group of people gathered in a meeting room.  |  photo: logs/photos/PHONE_USAGE_20260508_154756.jpg
+[2026-05-08 15:47:57]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone to take a picture of a group of people gathered in a meeting room.  |  photo: logs/photos/PHONE_USAGE_20260508_154757.jpg
+[2026-05-08 15:47:58]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone to take a picture of a group of people gathered in a meeting room.  |  photo: logs/photos/PHONE_USAGE_20260508_154758.jpg
+[2026-05-08 15:47:59]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to document the office work environment.  |  photo: logs/photos/PHONE_USAGE_20260508_154759.jpg
+[2026-05-08 15:47:59]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to document the office work environment.  |  photo: logs/photos/PHONE_USAGE_20260508_154759.jpg
+[2026-05-08 15:47:59]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to document the office work environment.  |  photo: logs/photos/PHONE_USAGE_20260508_154759.jpg
+[2026-05-08 15:48:00]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to document the office work environment.  |  photo: logs/photos/PHONE_USAGE_20260508_154800.jpg
+[2026-05-08 15:48:05]  [PHONE_USAGE]  0m 00s  —  The employee is on a phone call.  |  photo: logs/photos/PHONE_USAGE_20260508_154805.jpg
+[2026-05-08 15:48:09]  [PHONE_USAGE]  0m 00s  —  An employee is talking on the phone in the middle of a group of people.  |  photo: logs/photos/PHONE_USAGE_20260508_154809.jpg
+[2026-05-08 15:48:12]  [PHONE_USAGE]  0m 00s  —  The employee is on a phone call while sitting at a desk.  |  photo: logs/photos/PHONE_USAGE_20260508_154812.jpg
+[2026-05-08 15:48:19]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone to take a photo of the group of people in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154819.jpg
+[2026-05-08 15:48:20]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone to take a photo of the group of people in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154820.jpg
+[2026-05-08 15:48:23]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting at the computer desk.  |  photo: logs/photos/PHONE_USAGE_20260508_154823.jpg
+[2026-05-08 15:48:27]  [PHONE_USAGE]  0m 00s  —  The employee is on the phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154827.jpg
+[2026-05-08 15:48:28]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a photo or possibly recording a video of the office scene.  |  photo: logs/photos/PHONE_USAGE_20260508_154828.jpg
+[2026-05-08 15:48:29]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a photo or possibly recording a video of the office scene.  |  photo: logs/photos/PHONE_USAGE_20260508_154829.jpg
+[2026-05-08 15:48:29]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a photo or possibly recording a video of the office scene.  |  photo: logs/photos/PHONE_USAGE_20260508_154829.jpg
+[2026-05-08 15:48:29]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a photo or possibly recording a video of the office scene.  |  photo: logs/photos/PHONE_USAGE_20260508_154829.jpg
+[2026-05-08 15:48:30]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a photo or possibly recording a video of the office scene.  |  photo: logs/photos/PHONE_USAGE_20260508_154830.jpg
+[2026-05-08 15:48:34]  [PHONE_USAGE]  0m 00s  —  The employee is checking or using their phone while at work, surrounded by other people working in a shared office space.  |  photo: logs/photos/PHONE_USAGE_20260508_154834.jpg
+[2026-05-08 15:48:37]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154837.jpg
+[2026-05-08 15:48:39]  [PHONE_USAGE]  0m 00s  —  Employee is using their phone while sitting in a cubicle at their computer desk.  |  photo: logs/photos/PHONE_USAGE_20260508_154839.jpg
+[2026-05-08 15:48:42]  [PHONE_USAGE]  0m 00s  —  The employee is holding a phone while standing in a crowded office space.  |  photo: logs/photos/PHONE_USAGE_20260508_154842.jpg
+[2026-05-08 15:48:50]  [PHONE_USAGE]  0m 00s  —  The employee is taking a selfie with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154850.jpg
+[2026-05-08 15:48:50]  [PHONE_USAGE]  0m 00s  —  The employee is taking a selfie with their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154850.jpg
+[2026-05-08 15:48:52]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting at a table in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154852.jpg
+[2026-05-08 15:48:53]  [PHONE_USAGE]  0m 00s  —  Employee is using their phone while working in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154853.jpg
+[2026-05-08 15:48:57]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting in front of a computer.  |  photo: logs/photos/PHONE_USAGE_20260508_154857.jpg
+[2026-05-08 15:48:58]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154858.jpg
+[2026-05-08 15:48:59]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154859.jpg
+[2026-05-08 15:49:00]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154900.jpg
+[2026-05-08 15:49:00]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154900.jpg
+[2026-05-08 15:49:00]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154900.jpg
+[2026-05-08 15:49:01]  [PHONE_USAGE]  0m 00s  —  The employee is looking at their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154901.jpg
+[2026-05-08 15:49:04]  [PHONE_USAGE]  0m 00s  —  The employee is playing a game on their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154904.jpg
+[2026-05-08 15:49:05]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo of their coworkers in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154905.jpg
+[2026-05-08 15:49:07]  [PHONE_USAGE]  0m 00s  —  The employee is using the phone to take a picture of the office with people in it.  |  photo: logs/photos/PHONE_USAGE_20260508_154907.jpg
+[2026-05-08 15:49:13]  [PHONE_USAGE]  0m 00s  —  The employee is holding a smartphone in their hand while standing at a desk.  |  photo: logs/photos/PHONE_USAGE_20260508_154913.jpg
+[2026-05-08 15:49:13]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154913.jpg
+[2026-05-08 15:49:16]  [PHONE_USAGE]  0m 00s  —  Employee is talking on a cell phone in front of other people.  |  photo: logs/photos/PHONE_USAGE_20260508_154916.jpg
+[2026-05-08 15:49:18]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154918.jpg
+[2026-05-08 15:49:20]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone while standing at a computer desk.  |  photo: logs/photos/PHONE_USAGE_20260508_154920.jpg
+[2026-05-08 15:49:22]  [PHONE_USAGE]  0m 00s  —  This employee is using their phone while standing at a computer desk.  |  photo: logs/photos/PHONE_USAGE_20260508_154922.jpg
+[2026-05-08 15:49:24]  [PHONE_USAGE]  0m 00s  —  The employee is using a cell phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154924.jpg
+[2026-05-08 15:49:27]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting at a desk with a computer.  |  photo: logs/photos/PHONE_USAGE_20260508_154927.jpg
+[2026-05-08 15:49:28]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting at a desk with a computer.  |  photo: logs/photos/PHONE_USAGE_20260508_154928.jpg
+[2026-05-08 15:49:29]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting at a desk with a computer.  |  photo: logs/photos/PHONE_USAGE_20260508_154929.jpg
+[2026-05-08 15:49:30]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting at the table.  |  photo: logs/photos/PHONE_USAGE_20260508_154930.jpg
+[2026-05-08 15:49:30]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting at the table.  |  photo: logs/photos/PHONE_USAGE_20260508_154930.jpg
+[2026-05-08 15:49:30]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while sitting at the table.  |  photo: logs/photos/PHONE_USAGE_20260508_154930.jpg
+[2026-05-08 15:49:30]  [PHONE_USAGE]  0m 00s  —  The employee is on the phone while being at work.  |  photo: logs/photos/PHONE_USAGE_20260508_154930.jpg
+[2026-05-08 15:49:31]  [PHONE_USAGE]  0m 00s  —  The employee is on the phone while being at work.  |  photo: logs/photos/PHONE_USAGE_20260508_154931.jpg
+[2026-05-08 15:49:36]  [PHONE_USAGE]  0m 00s  —  The employee is holding a phone, capturing a group photo of their colleagues working at desks.  |  photo: logs/photos/PHONE_USAGE_20260508_154936.jpg
+[2026-05-08 15:49:43]  [PHONE_USAGE]  0m 00s  —  An employee is using a phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154943.jpg
+[2026-05-08 15:49:44]  [PHONE_USAGE]  0m 00s  —  An employee is using a phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154944.jpg
+[2026-05-08 15:49:46]  [SLEEPING]  2m 00s  —  The employee's posture suggests they are sleeping, as they are leaning back with their head resting on their hand.  |  photo: logs/photos/SLEEPING_20260508_154946.jpg
+[2026-05-08 15:49:46]  [SLEEPING]  2m 00s  —  The employee's posture suggests they are sleeping, as they are leaning back with their head resting on their hand.  |  photo: logs/photos/SLEEPING_20260508_154946.jpg
+[2026-05-08 15:49:46]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while in a conference room full of people.  |  photo: logs/photos/PHONE_USAGE_20260508_154946.jpg
+[2026-05-08 15:49:48]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while in a conference room full of people.  |  photo: logs/photos/PHONE_USAGE_20260508_154948.jpg
+[2026-05-08 15:49:50]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while in a conference room full of people.  |  photo: logs/photos/PHONE_USAGE_20260508_154950.jpg
+[2026-05-08 15:49:53]  [PHONE_USAGE]  0m 00s  —  The employee is taking a picture of the office.  |  photo: logs/photos/PHONE_USAGE_20260508_154953.jpg
+[2026-05-08 15:49:54]  [PHONE_USAGE]  0m 00s  —  The employee is talking on the phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154954.jpg
+[2026-05-08 15:49:54]  [PHONE_USAGE]  0m 00s  —  The employee is talking on the phone.  |  photo: logs/photos/PHONE_USAGE_20260508_154954.jpg
+[2026-05-08 15:49:57]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone, possibly for work or personal communication, while sitting at a desk with a computer.  |  photo: logs/photos/PHONE_USAGE_20260508_154957.jpg
+[2026-05-08 15:49:59]  [PHONE_USAGE]  0m 00s  —  This employee is taking a photo of the computer monitor.  |  photo: logs/photos/PHONE_USAGE_20260508_154959.jpg
+[2026-05-08 15:49:59]  [PHONE_USAGE]  0m 00s  —  This employee is taking a photo of the computer monitor.  |  photo: logs/photos/PHONE_USAGE_20260508_154959.jpg
+[2026-05-08 15:50:00]  [PHONE_USAGE]  0m 00s  —  The employee is on the phone.  |  photo: logs/photos/PHONE_USAGE_20260508_155000.jpg
+[2026-05-08 15:50:00]  [PHONE_USAGE]  0m 00s  —  The employee is on the phone.  |  photo: logs/photos/PHONE_USAGE_20260508_155000.jpg
+[2026-05-08 15:50:00]  [PHONE_USAGE]  0m 00s  —  The employee is on the phone.  |  photo: logs/photos/PHONE_USAGE_20260508_155000.jpg
+[2026-05-08 15:50:01]  [PHONE_USAGE]  0m 00s  —  The employee is on a phone call while the rest of the team is in a meeting.  |  photo: logs/photos/PHONE_USAGE_20260508_155001.jpg
+[2026-05-08 15:50:09]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo on their phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_155009.jpg
+[2026-05-08 15:50:10]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo on their phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_155010.jpg
+[2026-05-08 15:50:10]  [PHONE_USAGE]  0m 00s  —  The employee is taking a photo on their phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_155010.jpg
+[2026-05-08 15:50:12]  [PHONE_USAGE]  0m 00s  —  The employee is talking on the phone while standing in a group of people in an office.  |  photo: logs/photos/PHONE_USAGE_20260508_155012.jpg
+[2026-05-08 15:50:13]  [PHONE_USAGE]  0m 00s  —  The employee is talking on the phone while standing in a group of people in an office.  |  photo: logs/photos/PHONE_USAGE_20260508_155013.jpg
+[2026-05-08 15:50:16]  [PHONE_USAGE]  0m 00s  —  The employee is on a phone call.  |  photo: logs/photos/PHONE_USAGE_20260508_155016.jpg
+[2026-05-08 15:50:19]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone while at the office.  |  photo: logs/photos/PHONE_USAGE_20260508_155019.jpg
+[2026-05-08 15:50:21]  [PHONE_USAGE]  0m 00s  —  The employee is talking on their phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_155021.jpg
+[2026-05-08 16:18:22]  [PHONE_USAGE]  0m 00s  —  The employee is talking on their phone in the office.  |  photo: logs/photos/PHONE_USAGE_20260508_161822.jpg
+[2026-05-08 16:19:14]  [PHONE_USAGE]  0m 00s  —  The employee is holding a phone, possibly using it for a video call.  |  photo: logs/photos/PHONE_USAGE_20260508_161914.jpg
+[2026-05-08 16:19:44]  [PHONE_USAGE]  0m 00s  —  The employee is using their phone to take a photo of the room.  |  photo: logs/photos/PHONE_USAGE_20260508_161944.jpg

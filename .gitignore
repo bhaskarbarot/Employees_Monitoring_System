@@ -1,0 +1,24 @@
+# Environment — contains credentials, never commit
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# YOLOv8 model weights (large binaries — download via Ultralytics)
+*.pt
+*.pth
+*.onnx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code internal
+.claude/
