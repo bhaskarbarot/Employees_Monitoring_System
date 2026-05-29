@@ -111,17 +111,16 @@ class TrackState:
         self.phone_type = None    # 'hand' | 'ear' | 'desk' | None
         self.phone_bbox = None    # full-frame bbox of detected phone
         self.pose_sleeping = False; self.face_visible = True
-        self.looking_away = False; self.leaning_back = False
-        self.standing = False; self.motion_score = 1.0
-        self.is_still = False; self.still_since = None
-        self.looking_at_screen = True; self.head_yaw = 0.0
+        self.motion_score = 1.0; self.is_still = False; self.still_since = None
+        self.head_yaw = 0.0
+        # wrist keypoints — used by phone classifier to confirm hand is on phone
+        self.left_wrist  = None   # (x, y, conf)
+        self.right_wrist = None   # (x, y, conf)
         # phone: confirm after 2 consecutive detections (~1 sec) → immediate capture
-        self.ev_phone  = EvidenceAcc(window=4,  min_ratio=0.50, min_frames=2)
-        # sleep/waste: need sustained detection (several seconds) before alerting
-        self.ev_sleep  = EvidenceAcc(window=10, min_ratio=0.70)
-        self.ev_waste  = EvidenceAcc(window=8,  min_ratio=0.65)
+        self.ev_phone = EvidenceAcc(window=4,  min_ratio=0.50, min_frames=2)
+        # sleep: needs sustained detection before alerting
+        self.ev_sleep = EvidenceAcc(window=10, min_ratio=0.70)
         self.phone_photo_at = 0; self.sleep_start = None
-        self.waste_start = None
 
     @property
     def track_age(self): return time.time() - self.first_seen
@@ -137,14 +136,8 @@ class TrackState:
         return sum(sigs) >= 2
 
     @property
-    def waste_raw(self):
-        return (self.standing
-                or (self.looking_away and not self.looking_at_screen)
-                or self.leaning_back)
-
-    @property
     def phone_raw(self):
-        # Only 'hand' / 'ear' trigger the alert accumulator — desk phones are passive
+        # Only 'hand' / 'ear' trigger the alert — desk phones are passive
         return (self.phone_type in ('hand', 'ear')) or self.phone_on_ear
 
 
@@ -214,25 +207,47 @@ class SimpleTracker:
 #  PHONE VALIDATION  (fixed vs v1: landscape + ear zone included)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _classify_phone(phone_bbox, person_bbox, phone_on_ear_signal=False):
+def _classify_phone(phone_bbox, person_bbox, phone_on_ear_signal=False,
+                    left_wrist=None, right_wrist=None):
     """
-    Classify where the phone is relative to the person.
-    Returns: 'ear' | 'hand' | 'desk'
+    Classify phone position.  Returns: 'ear' | 'hand' | 'desk'
 
-    Zone map (fraction of person bbox height from top):
-      0%  – 28%  → head / ear level  → PHONE ON EAR
-      28% – 78%  → shoulder / hand   → PHONE IN HAND
-      78% – 100% → lap / desk        → PHONE ON DESK
-    PoseWorker phone_on_ear overrides to 'ear'.
+    Logic:
+      1. PoseWorker ear signal → 'ear'
+      2. Phone in top 28% of person bbox → 'ear'
+      3. Wrist keypoint is INSIDE or touching the phone bbox → 'hand'
+      4. No wrist near phone → 'desk'  (phone lying on desk, not held)
     """
     if phone_on_ear_signal:
         return 'ear'
+
+    px1, py1, px2, py2 = phone_bbox
+    phone_cx = (px1 + px2) / 2
+    phone_cy = (py1 + py2) / 2
+
     ex1, ey1, ex2, ey2 = person_bbox
     p_h = max(ey2 - ey1, 1)
-    phone_cy = (phone_bbox[1] + phone_bbox[3]) / 2
     rel_y = (phone_cy - ey1) / p_h
-    if rel_y < 0.28:   return 'ear'
-    if rel_y < 0.78:   return 'hand'
+
+    # Top 28% = head/ear zone
+    if rel_y < 0.28:
+        return 'ear'
+
+    # Check wrist proximity — wrist must be near/inside phone bbox to count as "held"
+    # Expand the phone bbox by a margin proportional to its own size
+    pw = max(px2 - px1, 20)
+    ph = max(py2 - py1, 20)
+    margin = max(pw * 0.6, ph * 0.6, 25)   # generous overlap zone
+
+    for wrist in (left_wrist, right_wrist):
+        if wrist is None: continue
+        wx, wy, wc = wrist
+        if wc < 0.30: continue              # skip low-confidence keypoint
+        if (px1 - margin <= wx <= px2 + margin and
+                py1 - margin <= wy <= py2 + margin):
+            return 'hand'
+
+    # No wrist is near the phone → it's sitting on the desk
     return 'desk'
 
 
@@ -384,13 +399,16 @@ class BatchDetectWorker(threading.Thread):
                 full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
                 if not _valid_phone(full_bbox, pe['bbox'], fh, fw): continue
 
-                # Read PoseWorker's phone_on_ear signal from track state
-                ear_signal = False
+                # Read pose signals from track state for accurate classification
+                ear_signal = False; lw = None; rw = None
                 with cam.tracks_lock:
                     if pe['track_id'] in cam.tracks:
-                        ear_signal = cam.tracks[pe['track_id']].phone_on_ear
+                        ts0 = cam.tracks[pe['track_id']]
+                        ear_signal = ts0.phone_on_ear
+                        lw = ts0.left_wrist
+                        rw = ts0.right_wrist
 
-                ptype = _classify_phone(full_bbox, pe['bbox'], ear_signal)
+                ptype = _classify_phone(full_bbox, pe['bbox'], ear_signal, lw, rw)
 
                 phones_by_idx[cam_idx].append({
                     'bbox': full_bbox, 'conf': pconf,
@@ -470,12 +488,11 @@ class BatchPoseWorker(threading.Thread):
             with cam.tracks_lock:
                 if tid in cam.tracks:
                     ts = cam.tracks[tid]
-                    ts.pose_sleeping     = res['sleeping']
-                    ts.looking_away      = res['looking_away']
-                    ts.leaning_back      = res['leaning_back']
-                    ts.phone_on_ear      = res['phone_on_ear']
-                    ts.head_yaw          = res['yaw_deg']
-                    ts.looking_at_screen = res['at_screen']
+                    ts.pose_sleeping = res['sleeping']
+                    ts.phone_on_ear  = res['phone_on_ear']
+                    ts.head_yaw      = res['yaw_deg']
+                    ts.left_wrist    = res['left_wrist']
+                    ts.right_wrist   = res['right_wrist']
 
     def _match(self, nx, ny, persons):
         for pe in persons:
@@ -504,33 +521,8 @@ class BatchPoseWorker(threading.Thread):
         else:
             sh_span = 80
 
-        sleeping     = (nc >= C and avg_sh is not None
-                        and nose_y > avg_sh + sh_span * 0.4)
-
-        # ── Head-turn / looking-away logic — depends on camera angle ─────────
-        #
-        # side camera  (your camera):
-        #   Normal posture = person's profile faces camera → 1 ear visible
-        #   Looking away   = person turns toward camera    → BOTH ears visible
-        #
-        # front / overhead camera:
-        #   Normal posture = person faces camera           → both ears visible
-        #   Looking away   = person turns sideways         → only 1 ear visible
-        #
-        left_visible  = lec >= EAR_CONF_VISIBLE
-        right_visible = rec >= EAR_CONF_VISIBLE
-        both_visible  = left_visible and right_visible
-        one_visible   = left_visible != right_visible   # XOR — exactly one
-
-        if CAMERA_ANGLE == 'side':
-            looking_away = both_visible          # side cam: both ears = turned away from screen
-            at_screen    = one_visible           # side cam: profile = looking at screen
-        else:
-            looking_away = one_visible           # front cam: one ear = turned away
-            at_screen    = both_visible          # front cam: both ears = looking at screen
-
-        leaning_back = (nc >= C and avg_sh is not None
-                        and (avg_sh - nose_y) > sh_span * LEANING_BACK_RATIO)
+        sleeping = (nc >= C and avg_sh is not None
+                    and nose_y > avg_sh + sh_span * 0.4)
 
         # Phone on ear: wrist within proportional distance of ear
         ear_phone = False
@@ -542,7 +534,9 @@ class BatchPoseWorker(threading.Thread):
             if abs(rw_y - re_y) < thr_y and abs(rw_x - re_x) < thr_x:
                 ear_phone = True
 
-        # Head yaw (kept for display info)
+        # Head yaw for display
+        left_visible  = lec >= EAR_CONF_VISIBLE
+        right_visible = rec >= EAR_CONF_VISIBLE
         if left_visible and right_visible:
             ear_mid  = (le_x + re_x) / 2
             ear_span = max(abs(re_x - le_x), 1)
@@ -551,9 +545,13 @@ class BatchPoseWorker(threading.Thread):
         elif right_visible: yaw_deg = -55.0
         else:               yaw_deg =   0.0
 
-        return dict(sleeping=sleeping, looking_away=looking_away,
-                    leaning_back=leaning_back, phone_on_ear=ear_phone,
-                    yaw_deg=yaw_deg, at_screen=at_screen)
+        # Wrist positions passed back so phone classifier can confirm hand is on phone
+        lw_out = (lw_x, lw_y, lwc) if lwc >= 0.20 else None
+        rw_out = (rw_x, rw_y, rwc) if rwc >= 0.20 else None
+
+        return dict(sleeping=sleeping, phone_on_ear=ear_phone,
+                    yaw_deg=yaw_deg,
+                    left_wrist=lw_out, right_wrist=rw_out)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -667,41 +665,33 @@ class BehaviorEngine(threading.Thread):
         for tid, ts in snap.items():
             ts.ev_phone.add(ts.phone_raw)
             ts.ev_sleep.add(ts.sleep_raw)
-            ts.ev_waste.add(ts.waste_raw)
             phone_ok = ts.ev_phone.confirmed
             sleep_ok = ts.ev_sleep.confirmed
-            waste_ok = ts.ev_waste.confirmed and not phone_ok and not sleep_ok
 
-            # ── PHONE  (hand / ear only — desk is display-only, no alert) ───────
-            # Captures immediately on first confirmed detection (~1 sec / 2 frames).
-            # After capture, waits PHONE_COOLDOWN before next photo.
-            # When phone disappears (ev clears), resets so next pickup fires instantly.
+            # ── PHONE  (hand / ear — desk phones never alert) ────────────────
             if phone_ok:
                 ptype = ts.phone_type or ('ear' if ts.phone_on_ear else 'hand')
                 event = "PHONE_EAR" if ptype == 'ear' else "PHONE_HAND"
                 if now - ts.phone_photo_at >= PHONE_COOLDOWN:
-                    self._fire(event, frame, self._det(ts, "phone"), 0,
+                    # Save the annotated frame (what's on screen) — red boxes visible
+                    ann = annotate_cam(self.cam)
+                    self._fire(event, ann, self._det(ts, "phone"), 0,
                                self.cam.cam_id, self.cam.name)
                     with self.cam.tracks_lock:
                         if tid in self.cam.tracks:
                             self.cam.tracks[tid].phone_photo_at = now
                 label = "PHONE ON EAR" if ptype == 'ear' else "PHONE IN HAND"
                 overlays.append(f"[{self.cam.name}#{tid}] {label} {ts.ev_phone.ratio:.0%}")
-            else:
-                # Phone gone — reset cooldown timer so next pickup captures immediately
-                if ts.ev_phone.ratio == 0.0 and ts.phone_photo_at != 0:
-                    with self.cam.tracks_lock:
-                        if tid in self.cam.tracks:
-                            self.cam.tracks[tid].phone_photo_at = 0
 
-            # ── SLEEPING ────────────────────────────────────────────────────────
+            # ── SLEEPING ─────────────────────────────────────────────────────
             if sleep_ok:
                 with self.cam.tracks_lock:
                     if tid in self.cam.tracks:
                         if self.cam.tracks[tid].sleep_start is None:
                             self.cam.tracks[tid].sleep_start = now
                         elif now - self.cam.tracks[tid].sleep_start >= SLEEP_THRESHOLD:
-                            self._fire("SLEEPING", frame, self._det(ts, "sleep"),
+                            ann = annotate_cam(self.cam)
+                            self._fire("SLEEPING", ann, self._det(ts, "sleep"),
                                        now - self.cam.tracks[tid].sleep_start,
                                        self.cam.cam_id, self.cam.name)
                             self.cam.tracks[tid].sleep_start = None
@@ -713,25 +703,6 @@ class BehaviorEngine(threading.Thread):
                 with self.cam.tracks_lock:
                     if tid in self.cam.tracks: self.cam.tracks[tid].sleep_start = None
 
-            # ── TIME WASTING ────────────────────────────────────────────────────
-            if waste_ok:
-                with self.cam.tracks_lock:
-                    if tid in self.cam.tracks:
-                        if self.cam.tracks[tid].waste_start is None:
-                            self.cam.tracks[tid].waste_start = now
-                        elif now - self.cam.tracks[tid].waste_start >= WASTE_THRESHOLD:
-                            self._fire("TIME_WASTING", frame, self._det(ts, "waste"),
-                                       now - self.cam.tracks[tid].waste_start,
-                                       self.cam.cam_id, self.cam.name)
-                            self.cam.tracks[tid].waste_start = None
-                elapsed = now - (ts.waste_start or now)
-                reason = ("Standing" if ts.standing
-                          else "Not at screen" if not ts.looking_at_screen
-                          else "Leaning back")
-                overlays.append(f"[{self.cam.name}#{tid}] {reason} {int(elapsed//60)}m")
-            else:
-                with self.cam.tracks_lock:
-                    if tid in self.cam.tracks: self.cam.tracks[tid].waste_start = None
 
 
         return overlays
@@ -743,7 +714,6 @@ class BehaviorEngine(threading.Thread):
             'phones':         [{'bbox': ph['bbox'], 'conf': ph['conf']} for ph in snap['phones']],
             'phone_violator': ts.bbox if vtype == 'phone' else None,
             'sleep_violator': ts.bbox if vtype == 'sleep' else None,
-            'waste_violator': ts.bbox if vtype == 'waste' else None,
             'person_present': len(snap['persons']) > 0,
         }
 
@@ -797,7 +767,6 @@ def annotate_cam(cam, target_w=None, target_h=None):
             if ptype == 'ear': color, label = (0,60,255), "PHONE ON EAR"
             else:              color, label = _R,          "PHONE IN HAND"
         elif ts.ev_sleep.confirmed:   color, label = _R, "SLEEPING"
-        elif ts.ev_waste.confirmed:   color, label = _Y, "WASTING"
         else:                         color, label = _G, "OK"
         cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
         (lw2,lh2),_ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 2)
@@ -825,9 +794,8 @@ def annotate_cam(cam, target_w=None, target_h=None):
 
     n_p  = len(snap['persons']); n_ph = len(snap['phones'])
     n_s  = sum(1 for ts in track_snap.values() if ts.ev_sleep.confirmed)
-    n_w  = sum(1 for ts in track_snap.values() if ts.ev_waste.confirmed)
     bar  = (f"{cam.name} | {datetime.now():%H:%M:%S} | "
-            f"P:{n_p}  Phone:{n_ph}  Sleep:{n_s}  Waste:{n_w}")
+            f"Persons:{n_p}  Phone:{n_ph}  Sleeping:{n_s}")
     cv2.rectangle(frame, (0, h-26), (w, h), (30,30,30), -1)
     cv2.putText(frame, bar, (8, h-7),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.42, (200,200,200), 1, cv2.LINE_AA)

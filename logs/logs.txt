@@ -278,3 +278,33 @@
 [2026-05-29 16:10:19]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_161019.jpg
 [2026-05-29 16:10:45]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_161045.jpg
 [2026-05-29 16:10:51]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_161051.jpg
+[2026-05-29 16:19:33]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_161933.jpg
+[2026-05-29 16:19:55]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_161955.jpg
+[2026-05-29 16:19:56]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_161956.jpg
+[2026-05-29 16:20:58]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_162058.jpg
+[2026-05-29 16:21:02]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162102.jpg
+[2026-05-29 16:21:18]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_162118.jpg
+[2026-05-29 16:21:28]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162128.jpg
+[2026-05-29 16:21:41]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_162141.jpg
+[2026-05-29 16:21:46]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162146.jpg
+[2026-05-29 16:21:55]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162155.jpg
+[2026-05-29 16:21:59]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162159.jpg
+[2026-05-29 16:22:06]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_162206.jpg
+[2026-05-29 16:22:20]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_162220.jpg
+[2026-05-29 16:22:30]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162230.jpg
+[2026-05-29 16:22:36]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_162236.jpg
+[2026-05-29 16:22:48]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162248.jpg
+[2026-05-29 16:22:51]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_162251.jpg
+[2026-05-29 16:23:00]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162300.jpg
+[2026-05-29 16:23:05]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_162305.jpg
+[2026-05-29 16:23:24]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162324.jpg
+[2026-05-29 16:23:30]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_162330.jpg
+[2026-05-29 16:34:23]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_163423.jpg
+[2026-05-29 16:34:37]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_163437.jpg
+[2026-05-29 16:34:45]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_163445.jpg
+[2026-05-29 16:34:53]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_163453.jpg
+[2026-05-29 16:39:33]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_163933.jpg
+[2026-05-29 16:39:40]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_163940.jpg
+[2026-05-29 16:40:00]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_164000.jpg
+[2026-05-29 16:40:03]  [Cam1:Cam-1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260529_164003.jpg
+[2026-05-29 16:40:16]  [Cam1:Cam-1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260529_164016.jpg

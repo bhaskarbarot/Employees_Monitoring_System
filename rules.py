@@ -20,33 +20,26 @@ LOGS_FILE  = os.path.join(LOGS_DIR, "logs.txt")
 os.makedirs(PHOTOS_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR,   exist_ok=True)
 
-_GREEN  = (0, 210,   0)
-_RED    = (0,   0, 220)
-_ORANGE = (0, 140, 255)
 
 _BANNER = {
-    "PHONE_HAND":   (20,  90, 200),
-    "PHONE_EAR":    (0,   60, 220),
-    "SLEEPING":     (40,  40, 160),
-    "TIME_WASTING": (30, 130,  30),
+    "PHONE_HAND": (20,  90, 200),
+    "PHONE_EAR":  (0,   60, 220),
+    "SLEEPING":   (40,  40, 160),
 }
 _LABEL = {
-    "PHONE_HAND":   "PHONE IN HAND",
-    "PHONE_EAR":    "PHONE ON EAR / CALLING",
-    "SLEEPING":     "SLEEPING / HEAD ON DESK",
-    "TIME_WASTING": "TIME WASTING",
+    "PHONE_HAND": "PHONE IN HAND",
+    "PHONE_EAR":  "PHONE ON EAR / CALLING",
+    "SLEEPING":   "SLEEPING / HEAD ON DESK",
 }
 _DEFAULT_MSG = {
-    "PHONE_HAND":   "Employee detected holding phone in hand.",
-    "PHONE_EAR":    "Employee detected talking on phone / phone held to ear.",
-    "SLEEPING":     "Employee appears sleeping — head down, no face visible, or motionless.",
-    "TIME_WASTING": "Employee not working — standing away, looking sideways, or leaning back.",
+    "PHONE_HAND": "Employee detected holding phone in hand.",
+    "PHONE_EAR":  "Employee detected talking on phone / phone held to ear.",
+    "SLEEPING":   "Employee appears sleeping — head down, no face visible, or motionless.",
 }
 _OLLAMA_PROMPT = {
-    "PHONE_HAND":   "In one sentence, describe what the employee is doing with the phone in their hand.",
-    "PHONE_EAR":    "In one sentence, describe the employee talking on or holding a phone to their ear.",
-    "SLEEPING":     "In one sentence, describe the employee's posture suggesting they are sleeping.",
-    "TIME_WASTING": "In one sentence, describe what the employee is doing instead of working.",
+    "PHONE_HAND": "In one sentence, describe what the employee is doing with the phone in their hand.",
+    "PHONE_EAR":  "In one sentence, describe the employee talking on or holding a phone to their ear.",
+    "SLEEPING":   "In one sentence, describe the employee's posture suggesting they are sleeping.",
 }
 
 
@@ -82,48 +75,33 @@ def fire_alert(event: str, frame, det: dict, elapsed_sec: float,
 # ── Photo annotation ──────────────────────────────────────────────────────────
 
 def _draw(frame, event, det, elapsed_sec, cam_name="Cam"):
+    """
+    Frame is already annotated with colored boxes from annotate_cam().
+    Only add the event banner at top so saved photo clearly shows what was detected.
+    """
     h, w = frame.shape[:2]
 
-    violator = (det.get("phone_violator") or
-                det.get("sleep_violator") or
-                det.get("waste_violator"))
+    # Resize to 1280×720 for consistent saved photo size
+    if w != 1280 or h != 720:
+        frame = cv2.resize(frame, (1280, 720))
+        h, w = 720, 1280
 
-    # Person boxes
-    for pe in det.get("persons", []):
-        x1,y1,x2,y2 = pe["bbox"]
-        is_v  = (pe["bbox"] == violator)
-        color = _RED if is_v else _GREEN
-        label = _LABEL.get(event,"VIOLATION") if is_v else "Working"
-        cv2.rectangle(frame,(x1,y1),(x2,y2),color,3 if is_v else 2)
-        (lw,lh),_ = cv2.getTextSize(label,cv2.FONT_HERSHEY_SIMPLEX,0.6,2)
-        ly = max(y1-4,lh+4)
-        cv2.rectangle(frame,(x1,ly-lh-3),(x1+lw+4,ly+2),color,-1)
-        cv2.putText(frame,label,(x1+2,ly-1),
-                    cv2.FONT_HERSHEY_SIMPLEX,0.6,(255,255,255),2,cv2.LINE_AA)
+    # Top banner — coloured background + event label
+    m, s  = int(elapsed_sec // 60), int(elapsed_sec % 60)
+    txt   = f"  [{cam_name}]  {_LABEL.get(event, event)}   |   {m} min {s:02d} sec"
+    bh    = 80
+    col   = _BANNER.get(event, (0, 0, 180))
+    cv2.rectangle(frame, (0, 0), (w, bh), col, -1)
+    scale = 1.4
+    (tw, _), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, scale, 3)
+    if tw > w - 20: scale *= (w - 20) / tw
+    cv2.putText(frame, txt, (10, 58),
+                cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), 3, cv2.LINE_AA)
 
-    # Phone boxes
-    for ph in det.get("phones",[]):
-        x1,y1,x2,y2 = ph["bbox"]
-        cv2.rectangle(frame,(x1,y1),(x2,y2),_ORANGE,2)
-        cv2.putText(frame,"PHONE",(x1+2,max(y1-4,16)),
-                    cv2.FONT_HERSHEY_SIMPLEX,0.55,_ORANGE,2,cv2.LINE_AA)
-
-    # Top banner
-    m,s  = int(elapsed_sec//60), int(elapsed_sec%60)
-    txt  = f"  [{cam_name}]  {_LABEL.get(event,event)}   |   {m} min {s:02d} sec"
-    bh   = 90
-    col  = _BANNER.get(event,(0,0,180))
-    cv2.rectangle(frame,(0,0),(w,bh),col,-1)
-    scale = 1.6
-    (tw,_),_ = cv2.getTextSize(txt,cv2.FONT_HERSHEY_SIMPLEX,scale,3)
-    if tw > w-20: scale *= (w-20)/tw
-    cv2.putText(frame,txt,(10,65),cv2.FONT_HERSHEY_SIMPLEX,scale,
-                (255,255,255),3,cv2.LINE_AA)
-
-    # Timestamp
+    # Timestamp bottom-right
     ts_ = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-    cv2.putText(frame,ts_,(w-310,h-12),cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,(200,200,200),1,cv2.LINE_AA)
+    cv2.putText(frame, ts_, (w - 310, h - 12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (220, 220, 220), 1, cv2.LINE_AA)
     return frame
 
 
