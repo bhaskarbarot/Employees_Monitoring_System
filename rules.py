@@ -25,46 +25,48 @@ _RED    = (0,   0, 220)
 _ORANGE = (0, 140, 255)
 
 _BANNER = {
-    "PHONE_USAGE":  (20,  90, 200),
-    "NOT_IN_SEAT":  (160, 40,  40),
+    "PHONE_HAND":   (20,  90, 200),
+    "PHONE_EAR":    (0,   60, 220),
     "SLEEPING":     (40,  40, 160),
     "TIME_WASTING": (30, 130,  30),
 }
 _LABEL = {
-    "PHONE_USAGE":  "USING PHONE / PHONE ON EAR",
-    "NOT_IN_SEAT":  "NOT IN SEAT",
+    "PHONE_HAND":   "PHONE IN HAND",
+    "PHONE_EAR":    "PHONE ON EAR / CALLING",
     "SLEEPING":     "SLEEPING / HEAD ON DESK",
     "TIME_WASTING": "TIME WASTING",
 }
 _DEFAULT_MSG = {
-    "PHONE_USAGE":  "Employee detected using phone or talking on phone.",
-    "NOT_IN_SEAT":  "Employee absent from seat for extended period.",
+    "PHONE_HAND":   "Employee detected holding phone in hand.",
+    "PHONE_EAR":    "Employee detected talking on phone / phone held to ear.",
     "SLEEPING":     "Employee appears sleeping — head down, no face visible, or motionless.",
     "TIME_WASTING": "Employee not working — standing away, looking sideways, or leaning back.",
 }
 _OLLAMA_PROMPT = {
-    "PHONE_USAGE":  "In one sentence, describe what this employee is doing with their phone.",
-    "NOT_IN_SEAT":  "In one sentence, describe why the employee seat appears empty.",
+    "PHONE_HAND":   "In one sentence, describe what the employee is doing with the phone in their hand.",
+    "PHONE_EAR":    "In one sentence, describe the employee talking on or holding a phone to their ear.",
     "SLEEPING":     "In one sentence, describe the employee's posture suggesting they are sleeping.",
     "TIME_WASTING": "In one sentence, describe what the employee is doing instead of working.",
 }
 
 
-def fire_alert(event: str, frame, det: dict, elapsed_sec: float):
+def fire_alert(event: str, frame, det: dict, elapsed_sec: float,
+               cam_id: int = 1, cam_name: str = "Cam"):
     """
     Save annotated photo + write log line.
     det must contain: persons, phones, phone_violator, sleep_violator, waste_violator
     """
     ts    = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    fname = f"{event}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    fname = f"Cam{cam_id}_{event}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
     photo = os.path.join(PHOTOS_DIR, fname)
 
-    annotated = _draw(frame.copy(), event, det, elapsed_sec)
+    annotated = _draw(frame.copy(), event, det, elapsed_sec, cam_name)
     cv2.imwrite(photo, annotated)
 
     m, s  = int(elapsed_sec//60), int(elapsed_sec%60)
     msg   = _DEFAULT_MSG[event]
-    line  = f"[{ts}]  [{event}]  {m}m {s:02d}s  —  {msg}  |  photo: {photo}\n"
+    line  = (f"[{ts}]  [Cam{cam_id}:{cam_name}]  [{event}]  "
+             f"{m}m {s:02d}s  —  {msg}  |  photo: {photo}\n")
 
     with open(LOGS_FILE, "a") as f:
         f.write(line)
@@ -79,7 +81,7 @@ def fire_alert(event: str, frame, det: dict, elapsed_sec: float):
 
 # ── Photo annotation ──────────────────────────────────────────────────────────
 
-def _draw(frame, event, det, elapsed_sec):
+def _draw(frame, event, det, elapsed_sec, cam_name="Cam"):
     h, w = frame.shape[:2]
 
     violator = (det.get("phone_violator") or
@@ -108,7 +110,7 @@ def _draw(frame, event, det, elapsed_sec):
 
     # Top banner
     m,s  = int(elapsed_sec//60), int(elapsed_sec%60)
-    txt  = f"  {_LABEL.get(event,event)}   |   {m} min {s:02d} sec"
+    txt  = f"  [{cam_name}]  {_LABEL.get(event,event)}   |   {m} min {s:02d} sec"
     bh   = 90
     col  = _BANNER.get(event,(0,0,180))
     cv2.rectangle(frame,(0,0),(w,bh),col,-1)

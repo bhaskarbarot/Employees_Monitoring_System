@@ -1,0 +1,46 @@
+[
+  {
+    "id": 1,
+    "name": "Reception",
+    "ip": "192.168.30.5",
+    "user": "admin",
+    "pass": "Masters@6677",
+    "port": 554,
+    "channel": 2,
+    "type": "dahua",
+    "rtsp_path": ""
+  },
+  {
+    "id": 2,
+    "name": "Desk-Area-2",
+    "ip": "192.168.30.6",
+    "user": "admin",
+    "pass": "password123",
+    "port": 554,
+    "channel": 1,
+    "type": "dahua",
+    "rtsp_path": ""
+  },
+  {
+    "id": 3,
+    "name": "Hikvision-1",
+    "ip": "192.168.30.10",
+    "user": "admin",
+    "pass": "password123",
+    "port": 554,
+    "channel": 1,
+    "type": "hikvision",
+    "rtsp_path": ""
+  },
+  {
+    "id": 4,
+    "name": "Custom-RTSP",
+    "ip": "192.168.30.20",
+    "user": "admin",
+    "pass": "password123",
+    "port": 554,
+    "channel": 1,
+    "type": "dahua",
+    "rtsp_path": "/cam/realmonitor?channel=1&subtype=1"
+  }
+]
