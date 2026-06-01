@@ -27,7 +27,7 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 HALF        = DEVICE == "cuda"
 CONF_PERSON = 0.50
-CONF_PHONE  = 0.27          # slightly lower than v1 for better recall
+CONF_PHONE  = 0.28          # balanced: catches real phones, skips very weak detections
 CONF_CHAIR  = 0.40
 CONF_KP     = 0.50
 DISPLAY_W   = 1280
@@ -60,23 +60,36 @@ signal.signal(signal.SIGINT,  _stop)
 signal.signal(signal.SIGTERM, _stop)
 
 # ── Global GPU models (loaded once, shared across all cameras) ────────────────
-_detect_model = None   # yolov8s.pt — person + phone + chair
-_pose_model   = None   # yolov8n-pose.pt
-_infer_lock   = threading.Lock()  # serialize GPU calls
+_detect_model  = None   # yolov8s.pt  — COCO person(0) + phone(67) detection
+_custom_model  = None   # custom model — phone_hand/ear/desk/sleeping classifier
+_pose_model    = None   # yolov8n-pose.pt
+_infer_lock    = threading.Lock()
+
+# Custom model class IDs (different from COCO)
+CUSTOM_PHONE_HAND = 0
+CUSTOM_PHONE_EAR  = 1
+CUSTOM_PHONE_DESK = 2
+CUSTOM_SLEEPING   = 3
 
 def _load_models():
-    global _detect_model, _pose_model
+    global _detect_model, _custom_model, _pose_model
     dummy = np.zeros((416, 416, 3), dtype="uint8")
 
-    # Auto-load custom trained model if it exists
-    custom = Path("custom_model/weights/best.pt")
-    detect_path = str(custom) if custom.exists() else "yolov8s.pt"
-    tag = "CUSTOM" if custom.exists() else "yolov8s"
-    print(f"  [Models] {detect_path} [{tag}] → {DEVICE}  fp16={HALF}")
-    if custom.exists():
-        print(f"  [Models] *** Using your custom trained model! ***")
-    _detect_model = YOLO(detect_path)
+    # yolov8s.pt: ALWAYS used for person(COCO:0) + phone(COCO:67) detection
+    # Custom model cannot replace this — it uses different class IDs
+    print(f"  [Models] yolov8s.pt → {DEVICE}  fp16={HALF}  (COCO person+phone)")
+    _detect_model = YOLO("yolov8s.pt")
     _detect_model([dummy], verbose=False, device=DEVICE, imgsz=416, half=HALF)
+
+    # Custom model (if trained): runs on person CROPS for better classification
+    custom = Path("custom_model/weights/best.pt")
+    if custom.exists():
+        print(f"  [Models] {custom} → {DEVICE}  (custom phone/sleep classifier)")
+        _custom_model = YOLO(str(custom))
+        _custom_model([dummy], verbose=False, device=DEVICE, imgsz=320, half=HALF)
+        print(f"  [Models] *** Custom model active — better phone accuracy ***")
+    else:
+        print(f"  [Models] No custom model found — using COCO detection only")
 
     print(f"  [Models] yolov8n-pose.pt → {DEVICE}")
     _pose_model = YOLO("yolov8n-pose.pt")
@@ -125,29 +138,40 @@ class TrackState:
         # wrist keypoints — used by phone classifier to confirm hand is on phone
         self.left_wrist  = None   # (x, y, conf)
         self.right_wrist = None   # (x, y, conf)
-        # phone: confirm after 2 consecutive detections (~1 sec) → immediate capture
-        self.ev_phone = EvidenceAcc(window=4,  min_ratio=0.50, min_frames=2)
+        # phone: 3 consecutive frames needed (~1.5s) — reduces flicker false positives
+        self.ev_phone = EvidenceAcc(window=6,  min_ratio=0.60, min_frames=3)
         # sleep: needs sustained detection before alerting
-        self.ev_sleep = EvidenceAcc(window=10, min_ratio=0.70)
+        self.ev_sleep = EvidenceAcc(window=12, min_ratio=0.75)
         self.phone_photo_at = 0; self.sleep_start = None
+        # Per-person phone usage timing
+        self.phone_session_start = None   # start of current phone use session
+        self.phone_total_sec     = 0.0    # cumulative usage this tracking session
 
     @property
     def track_age(self): return time.time() - self.first_seen
 
     @property
     def sleep_raw(self):
-        sigs = [
-            self.pose_sleeping,
+        # pose_sleeping is REQUIRED — no keypoints = no sleep alert
+        # Kills false positives: helmets, bags, empty chairs, desks
+        if not self.pose_sleeping:
+            return False
+        # Also need at least 1 more signal: face hidden OR body still for 60s
+        supporting = [
             not self.face_visible,
             self.is_still and self.still_since is not None
             and (time.time() - self.still_since) > MOTION_STILL_SECS,
         ]
-        return sum(sigs) >= 2
+        return sum(supporting) >= 1
 
     @property
     def phone_raw(self):
-        # Only 'hand' / 'ear' trigger the alert — desk phones are passive
-        return (self.phone_type in ('hand', 'ear')) or self.phone_on_ear
+        # phone_type requires YOLO to have actually detected a phone object
+        # phone_on_ear alone (wrist near ear, no phone detected) = ignored
+        # — stops "scratching head / adjusting glasses" false positives
+        yolo_detected = self.phone_type in ('hand', 'ear')
+        pose_confirmed = self.phone_on_ear and self.has_phone
+        return yolo_detected or pose_confirmed
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -242,21 +266,21 @@ def _classify_phone(phone_bbox, person_bbox, phone_on_ear_signal=False,
     if rel_y < 0.28:
         return 'ear'
 
-    # Check wrist proximity — wrist must be near/inside phone bbox to count as "held"
-    # Expand the phone bbox by a margin proportional to its own size
-    pw = max(px2 - px1, 20)
-    ph = max(py2 - py1, 20)
-    margin = max(pw * 0.6, ph * 0.6, 25)   # generous overlap zone
+    # Wrist proximity check.
+    # 30px margin — balanced for overhead camera keypoint imprecision (~10-20px).
+    # Previous 60% was too loose (desk phone triggered when typing nearby).
+    # 12px was too tight (real phone holding missed from overhead angle).
+    MARGIN = 30   # pixels — wrist must be within ~1 phone-width of phone
 
     for wrist in (left_wrist, right_wrist):
         if wrist is None: continue
         wx, wy, wc = wrist
-        if wc < 0.30: continue              # skip low-confidence keypoint
-        if (px1 - margin <= wx <= px2 + margin and
-                py1 - margin <= wy <= py2 + margin):
+        if wc < 0.30: continue
+        if (px1 - MARGIN <= wx <= px2 + MARGIN and
+                py1 - MARGIN <= wy <= py2 + MARGIN):
             return 'hand'
 
-    # No wrist is near the phone → it's sitting on the desk
+    # No wrist near phone → lying on desk, person not holding it
     return 'desk'
 
 
@@ -267,13 +291,13 @@ def _valid_phone(phone_bbox, person_bbox, frame_h, frame_w):
     aspect = ph / pw
 
     # Portrait (tall) OR landscape (wide) — v1 rejected landscape phones
-    portrait  = 1.2 <= aspect <= 5.0
-    landscape = 0.20 <= aspect <= 0.83
+    portrait  = 1.3 <= aspect <= 4.5   # tightened: exclude very square objects
+    landscape = 0.22 <= aspect <= 0.77  # tightened: exclude very square objects
     if not (portrait or landscape): return False
 
     area = ph * pw; f_area = frame_h * frame_w
-    if area < f_area * 0.0002: return False   # too small
-    if area > f_area * 0.05:   return False   # too large (monitor/whiteboard)
+    if area < f_area * 0.0003: return False   # too small (mouse/pen)
+    if area > f_area * 0.04:   return False   # too large (monitor/whiteboard)
 
     # Phone center must be in person's body zone 5%-95%
     # — v1 used 20%-85%, which cut off phones held at ear level
@@ -387,13 +411,22 @@ class BatchDetectWorker(threading.Thread):
             self._purge(cams, now); return
 
         # ── Pass 2: phone detection on batched person crops ───────────────
-        # Crops are zoomed-in person regions → phone appears 4× larger than
-        # it would in the full frame, dramatically improving recall.
+        # Use custom model if available (better at overhead-angle phones),
+        # otherwise fall back to base yolov8s with COCO class 67 (phone).
         crops = [m[2] for m in crop_meta]
-        with _infer_lock:
-            r2 = _detect_model(crops, verbose=False, conf=CONF_PHONE,
-                               imgsz=320, device=DEVICE, half=HALF,
-                               classes=[PHONE])
+        if _custom_model is not None:
+            # Custom model: classes 0=phone_hand,1=phone_ear,2=phone_desk
+            with _infer_lock:
+                r2 = _custom_model(crops, verbose=False, conf=CONF_PHONE,
+                                   imgsz=320, device=DEVICE, half=HALF,
+                                   classes=[CUSTOM_PHONE_HAND, CUSTOM_PHONE_EAR,
+                                            CUSTOM_PHONE_DESK])
+        else:
+            # Base model: COCO class 67 = cell phone
+            with _infer_lock:
+                r2 = _detect_model(crops, verbose=False, conf=CONF_PHONE,
+                                   imgsz=320, device=DEVICE, half=HALF,
+                                   classes=[PHONE])
 
         phones_by_idx     = [[] for _ in cams]
         phone_tids_by_idx = [set() for _ in cams]  # only hand/ear tids
@@ -408,16 +441,23 @@ class BatchDetectWorker(threading.Thread):
                 full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
                 if not _valid_phone(full_bbox, pe['bbox'], fh, fw): continue
 
-                # Read pose signals from track state for accurate classification
-                ear_signal = False; lw = None; rw = None
-                with cam.tracks_lock:
-                    if pe['track_id'] in cam.tracks:
-                        ts0 = cam.tracks[pe['track_id']]
-                        ear_signal = ts0.phone_on_ear
-                        lw = ts0.left_wrist
-                        rw = ts0.right_wrist
-
-                ptype = _classify_phone(full_bbox, pe['bbox'], ear_signal, lw, rw)
+                # If using custom model, class IDs directly give phone type
+                if _custom_model is not None:
+                    cls_id = int(pb.cls[0])
+                    if   cls_id == CUSTOM_PHONE_HAND: ptype = 'hand'
+                    elif cls_id == CUSTOM_PHONE_EAR:  ptype = 'ear'
+                    elif cls_id == CUSTOM_PHONE_DESK: ptype = 'desk'
+                    else: continue   # unknown class
+                else:
+                    # Base model: use wrist proximity to classify
+                    ear_signal = False; lw = None; rw = None
+                    with cam.tracks_lock:
+                        if pe['track_id'] in cam.tracks:
+                            ts0 = cam.tracks[pe['track_id']]
+                            ear_signal = ts0.phone_on_ear
+                            lw = ts0.left_wrist
+                            rw = ts0.right_wrist
+                    ptype = _classify_phone(full_bbox, pe['bbox'], ear_signal, lw, rw)
 
                 phones_by_idx[cam_idx].append({
                     'bbox': full_bbox, 'conf': pconf,
@@ -659,15 +699,35 @@ class OllamaVerifier(threading.Thread):
     """
 
     QUESTIONS = {
-        "PHONE_HAND": "Look at this overhead office security camera image. "
-                      "Is there a person clearly holding or using a mobile phone "
-                      "in their hand? Answer only YES or NO.",
-        "PHONE_EAR":  "Look at this overhead office security camera image. "
-                      "Is there a person holding a mobile phone up to their ear "
-                      "or talking on a phone? Answer only YES or NO.",
-        "SLEEPING":   "Look at this overhead office security camera image. "
-                      "Is there a person with their head resting on the desk, "
-                      "appearing to be sleeping or unconscious? Answer only YES or NO.",
+        "PHONE_HAND": (
+            "This is a CEILING/OVERHEAD security camera looking DOWN at an office. "
+            "Look at the person inside the RED or ORANGE bounding box. "
+            "Is that specific person CLEARLY holding a rectangular mobile phone "
+            "in their hand? Look for a small rectangular device in their hand. "
+            "Ignore people in GREEN boxes. "
+            "Answer YES only if you can clearly see a phone in the highlighted person's hand. "
+            "Answer NO if it is a mouse, keyboard, pen, or if no phone is visible. "
+            "Reply with only YES or NO."
+        ),
+        "PHONE_EAR": (
+            "This is a CEILING/OVERHEAD security camera looking DOWN at an office. "
+            "Look at the person inside the RED or ORANGE bounding box. "
+            "Is that specific person CLEARLY holding a mobile phone to their ear "
+            "while talking? From overhead, this looks like a hand raised to the side "
+            "of the head with a small rectangle visible. "
+            "Do NOT answer YES if the person is just touching their face, "
+            "scratching their head, or adjusting glasses. "
+            "Answer YES only if a phone is clearly visible near their ear. "
+            "Reply with only YES or NO."
+        ),
+        "SLEEPING": (
+            "This is a CEILING/OVERHEAD security camera looking DOWN at an office. "
+            "Look at the person inside the RED bounding box. "
+            "Is that person's head resting DOWN on the desk or their arms, "
+            "appearing to be asleep? From overhead, a sleeping person's head "
+            "will be very close to the desk surface. "
+            "Reply with only YES or NO."
+        ),
     }
 
     def __init__(self):
@@ -732,8 +792,11 @@ class OllamaVerifier(threading.Thread):
             )
             if r.ok:
                 resp = r.json().get("response", "").strip().upper()
-                if "NO" in resp and "YES" not in resp: return "NO"
-                if "YES" in resp: return "YES"
+                # Strict: only YES if response starts with YES or is clearly YES
+                # Anything uncertain → keep the photo (don't delete)
+                first_word = resp.split()[0] if resp.split() else ""
+                if first_word == "NO": return "NO"
+                if first_word == "YES": return "YES"
         except Exception as e:
             print(f"  [OllamaVerifier] Ollama error: {e}")
         return "YES"   # default: keep on error / uncertain
@@ -762,6 +825,43 @@ class OllamaVerifier(threading.Thread):
 # ══════════════════════════════════════════════════════════════════════════════
 #  BEHAVIOR ENGINE  (per-camera state machine)
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _force_red_box(ann_frame, ts, ptype, orig_frame):
+    """
+    Draw a guaranteed red box on the violator in the saved photo.
+    Uses live_bbox (current detection position) — ts.bbox can be stale
+    when tracker re-assigns IDs between frames.
+    """
+    # live_bbox is passed as the 5th argument from BehaviorEngine
+    bbox = getattr(ts, '_live_bbox', None) or ts.bbox
+    if bbox is None or ann_frame is None:
+        return ann_frame
+    try:
+        fh, fw = ann_frame.shape[:2]
+        if orig_frame is not None:
+            oh, ow = orig_frame.shape[:2]
+            sx, sy = fw / max(ow, 1), fh / max(oh, 1)
+        else:
+            sx, sy = 1.0, 1.0
+        x1 = int(bbox[0] * sx); y1 = int(bbox[1] * sy)
+        x2 = int(bbox[2] * sx); y2 = int(bbox[3] * sy)
+        RED = (0, 0, 220)
+        cv2.rectangle(ann_frame, (x1, y1), (x2, y2), RED, 3)
+        if ptype == 'ear':
+            lbl = "PHONE ON EAR"
+        elif ptype == 'sleep':
+            lbl = "SLEEPING"
+        else:
+            lbl = "PHONE IN HAND"
+        (lw, lh), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+        ly = max(y1 - 4, lh + 4)
+        cv2.rectangle(ann_frame, (x1, ly - lh - 3), (x1 + lw + 6, ly + 2), RED, -1)
+        cv2.putText(ann_frame, lbl, (x1 + 2, ly - 1),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
+    except Exception:
+        pass
+    return ann_frame
+
 
 class BehaviorEngine(threading.Thread):
     def __init__(self, cam):
@@ -795,16 +895,38 @@ class BehaviorEngine(threading.Thread):
             if phone_ok:
                 ptype = ts.phone_type or ('ear' if ts.phone_on_ear else 'hand')
                 event = "PHONE_EAR" if ptype == 'ear' else "PHONE_HAND"
+
+                # Track per-person phone usage time
+                with self.cam.tracks_lock:
+                    if tid in self.cam.tracks:
+                        if self.cam.tracks[tid].phone_session_start is None:
+                            self.cam.tracks[tid].phone_session_start = now
+
+                session_dur  = now - (ts.phone_session_start or now)
+                total_usage  = ts.phone_total_sec + session_dur
+                m_u, s_u     = int(total_usage // 60), int(total_usage % 60)
+
                 if now - ts.phone_photo_at >= PHONE_COOLDOWN:
-                    # Save the annotated frame (what's on screen) — red boxes visible
                     ann = annotate_cam(self.cam)
-                    self._fire(event, ann, self._det(ts, "phone"), 0,
+                    ann = _force_red_box(ann, ts, ptype, self.cam.state.get_frame())
+                    self._fire(event, ann, self._det(ts, "phone"), total_usage,
                                self.cam.cam_id, self.cam.name)
                     with self.cam.tracks_lock:
                         if tid in self.cam.tracks:
                             self.cam.tracks[tid].phone_photo_at = now
+
                 label = "PHONE ON EAR" if ptype == 'ear' else "PHONE IN HAND"
-                overlays.append(f"[{self.cam.name}#{tid}] {label} {ts.ev_phone.ratio:.0%}")
+                overlays.append(
+                    f"[{self.cam.name}#{tid}] {label}  {m_u}m{s_u:02d}s total"
+                )
+
+            else:
+                # Phone session ended — accumulate time
+                with self.cam.tracks_lock:
+                    if tid in self.cam.tracks and self.cam.tracks[tid].phone_session_start:
+                        dur = now - self.cam.tracks[tid].phone_session_start
+                        self.cam.tracks[tid].phone_total_sec += dur
+                        self.cam.tracks[tid].phone_session_start = None
 
             # ── SLEEPING ─────────────────────────────────────────────────────
             if sleep_ok:
@@ -814,6 +936,8 @@ class BehaviorEngine(threading.Thread):
                             self.cam.tracks[tid].sleep_start = now
                         elif now - self.cam.tracks[tid].sleep_start >= SLEEP_THRESHOLD:
                             ann = annotate_cam(self.cam)
+                            ann = _force_red_box(ann, ts, 'sleep',
+                                                  self.cam.state.get_frame())
                             self._fire("SLEEPING", ann, self._det(ts, "sleep"),
                                        now - self.cam.tracks[tid].sleep_start,
                                        self.cam.cam_id, self.cam.name)
@@ -898,7 +1022,16 @@ def annotate_cam(cam, target_w=None, target_h=None):
         cv2.putText(frame, label, (x1+2, ly-1),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255,255,255), 2, cv2.LINE_AA)
         if ts:
-            cv2.putText(frame, f"#{tid} {ts.head_yaw:+.0f}°", (x1+2, y2-4),
+            # Show track ID + cumulative phone usage time per person
+            total_phone = ts.phone_total_sec
+            if ts.phone_session_start is not None:
+                total_phone += time.time() - ts.phone_session_start
+            if total_phone > 5:
+                m_p, s_p = int(total_phone//60), int(total_phone%60)
+                info_txt = f"#{tid}  Phone: {m_p}m{s_p:02d}s"
+            else:
+                info_txt = f"#{tid}"
+            cv2.putText(frame, info_txt, (x1+2, y2-4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180,180,180), 1, cv2.LINE_AA)
 
     for ph in snap['phones']:

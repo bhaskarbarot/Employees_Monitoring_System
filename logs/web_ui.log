@@ -566,3 +566,4 @@ Press CTRL+C to quit
 127.0.0.1 - - [01/Jun/2026 13:00:19] "GET /stream/D31?_=1780299019505 HTTP/1.1" 200 -
 127.0.0.1 - - [01/Jun/2026 13:00:19] "GET /stream/D19?_=1780299019505 HTTP/1.1" 200 -
 [2026-06-01 13:06:32 +0530] [390167] [ERROR] Worker (pid:390169) was sent SIGKILL! Perhaps out of memory?
+[2026-06-01 16:00:46 +0530] [689679] [WARNING] Worker (pid:689691) was sent SIGABRT!

@@ -4,7 +4,7 @@
 #  Usage:  ./run.sh
 # ═══════════════════════════════════════════════════════
 
-set -e
+# set -e removed — pkill returns 1 when nothing to kill, which caused early exit
 cd "$(dirname "$0")"
 
 GREEN='\033[0;32m'
@@ -35,13 +35,13 @@ echo -e "${CYAN}[2/3] Installing dependencies...${NC}"
 pip install -q -r requirements.txt
 echo -e "${GREEN}  ✓ All packages ready${NC}"
 
-# ── Kill any previous instances ───────────────────────
+# ── Kill ALL previous instances (force, all duplicates) ──
 echo ""
 echo -e "${CYAN}  Stopping any previous instances...${NC}"
-pkill -f "python3 monitor.py" 2>/dev/null && sleep 1 || true
-pkill -f "python3 web_ui.py"  2>/dev/null && sleep 1 || true
-# Free port 5000 if occupied
-fuser -k 5000/tcp 2>/dev/null || true
+pkill -9 -f "monitor.py"  2>/dev/null || true; sleep 1
+pkill -9 -f "web_ui.py"   2>/dev/null || true; sleep 1
+pkill -9 -f "gunicorn"    2>/dev/null || true; sleep 1
+fuser -k 5000/tcp         2>/dev/null || true
 sleep 1
 echo -e "${GREEN}  ✓ Clean start${NC}"
 

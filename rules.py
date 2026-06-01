@@ -88,7 +88,8 @@ def _draw(frame, event, det, elapsed_sec, cam_name="Cam"):
 
     # Top banner — coloured background + event label
     m, s  = int(elapsed_sec // 60), int(elapsed_sec % 60)
-    txt   = f"  [{cam_name}]  {_LABEL.get(event, event)}   |   {m} min {s:02d} sec"
+    dur_str = f"{m} min {s:02d} sec" if m > 0 else f"{s} sec"
+    txt   = f"  [{cam_name}]  {_LABEL.get(event, event)}   |   Total: {dur_str}"
     bh    = 80
     col   = _BANNER.get(event, (0, 0, 180))
     cv2.rectangle(frame, (0, 0), (w, bh), col, -1)

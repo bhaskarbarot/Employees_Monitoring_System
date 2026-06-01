@@ -1,6 +1,6 @@
 task: detect
 mode: train
-model: yolov8s.pt
+model: custom_model/weights/best.pt
 data: training_data/dataset.yaml
 epochs: 50
 time: null

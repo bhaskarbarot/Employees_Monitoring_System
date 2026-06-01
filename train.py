@@ -136,17 +136,27 @@ def main():
         verbose  = True,
     )
 
-    best = OUT_DIR / "weights" / "weights" / "best.pt"
+    # YOLO saves under runs/detect/{project_name}/{name}/weights/best.pt
+    # Try multiple possible locations
+    candidates = [
+        OUT_DIR / "weights" / "weights" / "best.pt",               # custom_model/weights/weights/best.pt
+        Path("runs/detect") / OUT_DIR.name / "weights" / "weights" / "best.pt",  # runs/detect/...
+        Path("runs/detect/weights/weights/best.pt"),
+    ]
+    # Also search dynamically
+    for p in Path("runs/detect").rglob("best.pt") if Path("runs/detect").exists() else []:
+        candidates.insert(0, p)
+
+    found = next((p for p in candidates if p.exists()), None)
     final = OUT_DIR / "weights" / "best.pt"
+    final.parent.mkdir(parents=True, exist_ok=True)
 
-    # Flatten to custom_model/weights/best.pt
-    if best.exists():
-        shutil.copy2(best, final)
-
-    if final.exists():
+    if found:
+        shutil.copy2(found, final)
         print(f"\n{'═'*55}")
         print(f"  Training complete!")
-        print(f"  Model saved → {final}")
+        print(f"  Best mAP found in: {found}")
+        print(f"  Model copied  → {final}")
         print(f"  Restart monitor.py to use the new model.")
         print(f"{'═'*55}\n")
     else:

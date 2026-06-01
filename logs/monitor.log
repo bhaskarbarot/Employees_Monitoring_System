@@ -11,7 +11,9 @@
 ═════════════════════════════════════════════════════════════════
 
 [INFO] Loading shared models...
-  [Models] yolov8s.pt [yolov8s] → cuda  fp16=True
+  [Models] yolov8s.pt → cuda  fp16=True  (COCO person+phone)
+  [Models] custom_model/weights/best.pt → cuda  (custom phone/sleep classifier)
+  [Models] *** Custom model active — better phone accuracy ***
   [Models] yolov8n-pose.pt → cuda
   [Models] ready.
 
@@ -75,7 +77,6 @@ set det-size: (160, 160)
   ✓ Workers for D31
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
 find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
-[91m[ALERT][0m [2026-06-01 14:01:27]  [Cam1:D1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260601_140127.jpg
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
 model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
 set det-size: (160, 160)
@@ -86,83 +87,61 @@ set det-size: (160, 160)
 [INFO] Monitoring 7 camera(s). Press Q to quit.
 
   [OllamaVerifier] started — using llava:latest
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_HAND_20260601_140127.jpg
-[91m[ALERT][0m [2026-06-01 14:01:28]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140128.jpg
-[91m[ALERT][0m [2026-06-01 14:01:33]  [Cam31:D31]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_140133.jpg
-[91m[ALERT][0m [2026-06-01 14:01:33]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140133.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140133.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_140133.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140128.jpg
-[91m[ALERT][0m [2026-06-01 14:01:57]  [Cam1:D1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260601_140157.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_HAND_20260601_140157.jpg
-[91m[ALERT][0m [2026-06-01 14:02:00]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140200.jpg
-[91m[ALERT][0m [2026-06-01 14:02:04]  [Cam44:D44]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam44_PHONE_EAR_20260601_140204.jpg
-  [OllamaVerifier] ✓ confirmed Cam44_PHONE_EAR_20260601_140204.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140200.jpg
-[91m[ALERT][0m [2026-06-01 14:02:11]  [Cam2:D2]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam2_PHONE_EAR_20260601_140211.jpg
-[91m[ALERT][0m [2026-06-01 14:02:12]  [Cam31:D31]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_140212.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_140212.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_EAR_20260601_140211.jpg
-[91m[ALERT][0m [2026-06-01 14:02:17]  [Cam2:D2]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam2_PHONE_EAR_20260601_140217.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_EAR_20260601_140217.jpg
-[91m[ALERT][0m [2026-06-01 14:02:27]  [Cam1:D1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260601_140227.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_EAR_20260601_140227.jpg
-[91m[ALERT][0m [2026-06-01 14:02:33]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140233.jpg
-[91m[ALERT][0m [2026-06-01 14:02:39]  [Cam44:D44]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam44_PHONE_EAR_20260601_140239.jpg
-  [OllamaVerifier] ✓ confirmed Cam44_PHONE_EAR_20260601_140239.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140233.jpg
-[91m[ALERT][0m [2026-06-01 14:02:47]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140247.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140247.jpg
-[91m[ALERT][0m [2026-06-01 14:02:49]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140249.jpg
-[91m[ALERT][0m [2026-06-01 14:02:50]  [Cam1:D1]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam1_PHONE_HAND_20260601_140250.jpg
-[91m[ALERT][0m [2026-06-01 14:02:54]  [Cam2:D2]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam2_PHONE_EAR_20260601_140254.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_EAR_20260601_140254.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_HAND_20260601_140250.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140249.jpg
-[91m[ALERT][0m [2026-06-01 14:02:57]  [Cam1:D1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260601_140257.jpg
-[91m[ALERT][0m [2026-06-01 14:03:00]  [Cam19:D19]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam19_PHONE_EAR_20260601_140300.jpg
-[91m[ALERT][0m [2026-06-01 14:03:03]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140303.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140303.jpg
-  [OllamaVerifier] ✓ confirmed Cam19_PHONE_EAR_20260601_140300.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_EAR_20260601_140257.jpg
-[91m[ALERT][0m [2026-06-01 14:03:06]  [Cam19:D19]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam19_PHONE_EAR_20260601_140306.jpg
-[91m[ALERT][0m [2026-06-01 14:03:09]  [Cam44:D44]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam44_PHONE_EAR_20260601_140309.jpg
-  [OllamaVerifier] ✓ confirmed Cam44_PHONE_EAR_20260601_140309.jpg
-  [OllamaVerifier] ✓ confirmed Cam19_PHONE_EAR_20260601_140306.jpg
-[91m[ALERT][0m [2026-06-01 14:03:12]  [Cam31:D31]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam31_PHONE_EAR_20260601_140312.jpg
-[91m[ALERT][0m [2026-06-01 14:03:16]  [Cam9:D9]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam9_PHONE_EAR_20260601_140316.jpg
-[91m[ALERT][0m [2026-06-01 14:03:17]  [Cam2:D2]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam2_PHONE_EAR_20260601_140317.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_EAR_20260601_140317.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_EAR_20260601_140316.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_EAR_20260601_140312.jpg
-[91m[ALERT][0m [2026-06-01 14:03:21]  [Cam1:D1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260601_140321.jpg
-[91m[ALERT][0m [2026-06-01 14:03:22]  [Cam1:D1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260601_140322.jpg
-[91m[ALERT][0m [2026-06-01 14:03:24]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140324.jpg
-[91m[ALERT][0m [2026-06-01 14:03:24]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140324.jpg
-[91m[ALERT][0m [2026-06-01 14:03:26]  [Cam31:D31]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam31_PHONE_EAR_20260601_140326.jpg
-[91m[ALERT][0m [2026-06-01 14:03:27]  [Cam1:D1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260601_140327.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_EAR_20260601_140327.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_EAR_20260601_140326.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140324.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_EAR_20260601_140322.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_EAR_20260601_140321.jpg
-[91m[ALERT][0m [2026-06-01 14:03:36]  [Cam31:D31]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_140336.jpg
-[91m[ALERT][0m [2026-06-01 14:03:36]  [Cam19:D19]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam19_PHONE_EAR_20260601_140336.jpg
-[91m[ALERT][0m [2026-06-01 14:03:37]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140337.jpg
-[91m[ALERT][0m [2026-06-01 14:03:42]  [Cam44:D44]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam44_PHONE_EAR_20260601_140342.jpg
-  [OllamaVerifier] ✓ confirmed Cam44_PHONE_EAR_20260601_140342.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140337.jpg
-  [OllamaVerifier] ✓ confirmed Cam19_PHONE_EAR_20260601_140336.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_140336.jpg
-[91m[ALERT][0m [2026-06-01 14:03:44]  [Cam31:D31]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_140344.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_140344.jpg
-[91m[ALERT][0m [2026-06-01 14:03:52]  [Cam1:D1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260601_140352.jpg
-[91m[ALERT][0m [2026-06-01 14:03:53]  [Cam31:D31]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam31_PHONE_EAR_20260601_140353.jpg
-[91m[ALERT][0m [2026-06-01 14:03:54]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140354.jpg
-[91m[ALERT][0m [2026-06-01 14:03:57]  [Cam1:D1]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: logs/photos/Cam1_PHONE_EAR_20260601_140357.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_EAR_20260601_140357.jpg
-  [OllamaVerifier] ✓ confirmed Cam2_PHONE_HAND_20260601_140354.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_EAR_20260601_140353.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_EAR_20260601_140352.jpg
-[91m[ALERT][0m [2026-06-01 14:04:00]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260601_140400.jpg
+  [OllamaVerifier] ✓ confirmed Cam1_PHONE_HAND_20260601_165602.jpg
+  [OllamaVerifier] ✓ confirmed Cam1_PHONE_HAND_20260601_165532.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165449.jpg
+[91m[ALERT][0m [2026-06-01 16:56:26]  [Cam31:D31]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165626.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165626.jpg
+[91m[ALERT][0m [2026-06-01 16:56:59]  [Cam31:D31]  [PHONE_HAND]  0m 13s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165659.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165659.jpg
+[91m[ALERT][0m [2026-06-01 16:57:29]  [Cam31:D31]  [PHONE_HAND]  0m 43s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165729.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165729.jpg
+[91m[ALERT][0m [2026-06-01 16:57:45]  [Cam31:D31]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165745.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165745.jpg
+[91m[ALERT][0m [2026-06-01 16:57:59]  [Cam31:D31]  [PHONE_HAND]  1m 13s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165759.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165759.jpg
+[91m[ALERT][0m [2026-06-01 16:58:07]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165807.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165807.jpg
+[91m[ALERT][0m [2026-06-01 16:58:29]  [Cam31:D31]  [PHONE_HAND]  1m 43s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165829.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165829.jpg
+[91m[ALERT][0m [2026-06-01 16:58:37]  [Cam9:D9]  [PHONE_HAND]  0m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165837.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165837.jpg
+[91m[ALERT][0m [2026-06-01 16:58:50]  [Cam31:D31]  [PHONE_HAND]  0m 02s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165850.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165850.jpg
+[91m[ALERT][0m [2026-06-01 16:58:59]  [Cam31:D31]  [PHONE_HAND]  2m 13s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165859.jpg
+[91m[ALERT][0m [2026-06-01 16:59:05]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165905.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165905.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165859.jpg
+[91m[ALERT][0m [2026-06-01 16:59:07]  [Cam9:D9]  [PHONE_HAND]  1m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165907.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165907.jpg
+[91m[ALERT][0m [2026-06-01 16:59:21]  [Cam31:D31]  [PHONE_HAND]  0m 10s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165921.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165921.jpg
+[91m[ALERT][0m [2026-06-01 16:59:29]  [Cam31:D31]  [PHONE_HAND]  2m 43s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165929.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165929.jpg
+[91m[ALERT][0m [2026-06-01 16:59:35]  [Cam9:D9]  [PHONE_HAND]  0m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165935.jpg
+[91m[ALERT][0m [2026-06-01 16:59:37]  [Cam9:D9]  [PHONE_HAND]  1m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165937.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165937.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165935.jpg
+[91m[ALERT][0m [2026-06-01 16:59:42]  [Cam19:D19]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam19_PHONE_HAND_20260601_165942.jpg
+  [OllamaVerifier] ✓ confirmed Cam19_PHONE_HAND_20260601_165942.jpg
+[91m[ALERT][0m [2026-06-01 16:59:59]  [Cam31:D31]  [PHONE_HAND]  3m 13s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165959.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165959.jpg
+[91m[ALERT][0m [2026-06-01 17:00:05]  [Cam9:D9]  [PHONE_HAND]  1m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170005.jpg
+[91m[ALERT][0m [2026-06-01 17:00:07]  [Cam9:D9]  [PHONE_HAND]  2m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170007.jpg
+[91m[ALERT][0m [2026-06-01 17:00:09]  [Cam31:D31]  [PHONE_HAND]  0m 20s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_170009.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_170009.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_170007.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_170005.jpg
+[91m[ALERT][0m [2026-06-01 17:00:12]  [Cam19:D19]  [PHONE_HAND]  0m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam19_PHONE_HAND_20260601_170012.jpg
+  [OllamaVerifier] ✓ confirmed Cam19_PHONE_HAND_20260601_170012.jpg
+[91m[ALERT][0m [2026-06-01 17:00:20]  [Cam44:D44]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam44_PHONE_HAND_20260601_170020.jpg
+  [OllamaVerifier] ✓ confirmed Cam44_PHONE_HAND_20260601_170020.jpg
+[91m[ALERT][0m [2026-06-01 17:00:29]  [Cam31:D31]  [PHONE_HAND]  3m 43s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_170029.jpg
+  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_170029.jpg
+[91m[ALERT][0m [2026-06-01 17:00:35]  [Cam9:D9]  [PHONE_HAND]  1m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170035.jpg
+[91m[ALERT][0m [2026-06-01 17:00:37]  [Cam9:D9]  [PHONE_HAND]  2m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170037.jpg
+[91m[ALERT][0m [2026-06-01 17:00:42]  [Cam19:D19]  [PHONE_HAND]  1m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam19_PHONE_HAND_20260601_170042.jpg
+  [OllamaVerifier] ✓ confirmed Cam19_PHONE_HAND_20260601_170042.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_170037.jpg
+  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_170035.jpg
 [INFO] Stopped.
