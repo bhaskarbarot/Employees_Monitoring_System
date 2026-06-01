@@ -1,0 +1,10 @@
+names:
+- phone_hand
+- phone_ear
+- phone_desk
+- sleeping
+- working
+nc: 5
+path: /home/elsner/Documents/employees/training_data
+train: images/train
+val: images/val

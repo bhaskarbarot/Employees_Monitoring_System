@@ -14,6 +14,7 @@ Employee Monitor v2 — Multi-Camera, GPU-Efficient
 import os, time, signal, threading, json, urllib.parse, math
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 
 import cv2, torch, numpy as np
 from dotenv import load_dotenv
@@ -66,9 +67,17 @@ _infer_lock   = threading.Lock()  # serialize GPU calls
 def _load_models():
     global _detect_model, _pose_model
     dummy = np.zeros((416, 416, 3), dtype="uint8")
-    print(f"  [Models] yolov8s.pt → {DEVICE}  fp16={HALF}")
-    _detect_model = YOLO("yolov8s.pt")
+
+    # Auto-load custom trained model if it exists
+    custom = Path("custom_model/weights/best.pt")
+    detect_path = str(custom) if custom.exists() else "yolov8s.pt"
+    tag = "CUSTOM" if custom.exists() else "yolov8s"
+    print(f"  [Models] {detect_path} [{tag}] → {DEVICE}  fp16={HALF}")
+    if custom.exists():
+        print(f"  [Models] *** Using your custom trained model! ***")
+    _detect_model = YOLO(detect_path)
     _detect_model([dummy], verbose=False, device=DEVICE, imgsz=416, half=HALF)
+
     print(f"  [Models] yolov8n-pose.pt → {DEVICE}")
     _pose_model = YOLO("yolov8n-pose.pt")
     _pose_model([dummy], verbose=False, device=DEVICE, imgsz=416, half=HALF)
@@ -637,6 +646,120 @@ class FaceWorker(threading.Thread):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  OLLAMA VERIFIER  — removes false positive alert photos using llava vision
+#  Enabled when USE_OLLAMA=true in .env
+# ══════════════════════════════════════════════════════════════════════════════
+
+class OllamaVerifier(threading.Thread):
+    """
+    Watches logs/photos/ for new alert images.
+    Sends each to Ollama llava with a yes/no question.
+    Deletes false positives and removes them from the log.
+    Verified true positives are copied to training_data/ for future retraining.
+    """
+
+    QUESTIONS = {
+        "PHONE_HAND": "Look at this overhead office security camera image. "
+                      "Is there a person clearly holding or using a mobile phone "
+                      "in their hand? Answer only YES or NO.",
+        "PHONE_EAR":  "Look at this overhead office security camera image. "
+                      "Is there a person holding a mobile phone up to their ear "
+                      "or talking on a phone? Answer only YES or NO.",
+        "SLEEPING":   "Look at this overhead office security camera image. "
+                      "Is there a person with their head resting on the desk, "
+                      "appearing to be sleeping or unconscious? Answer only YES or NO.",
+    }
+
+    def __init__(self):
+        super().__init__(daemon=True, name="OllamaVerifier")
+        self._seen     = set()
+        self._photos   = Path("logs/photos")
+        self._log_file = Path("logs/logs.txt")
+        self._train_dir = Path("training_data")
+
+    def run(self):
+        from dotenv import load_dotenv; load_dotenv()
+        if os.getenv("USE_OLLAMA", "false").lower() != "true":
+            print("  [OllamaVerifier] disabled (USE_OLLAMA=false in .env)")
+            return
+        model = os.getenv("OLLAMA_MODEL", "llava:latest")
+        print(f"  [OllamaVerifier] started — using {model}")
+
+        while _running:
+            try: self._scan(model)
+            except Exception as e: print(f"  [OllamaVerifier] {e}")
+            time.sleep(8)
+
+    def _scan(self, model):
+        if not self._photos.exists(): return
+        photos = sorted(self._photos.glob("Cam*.jpg"),
+                        key=lambda x: x.stat().st_mtime, reverse=True)[:15]
+        for p in photos:
+            if p.name in self._seen: continue
+            self._seen.add(p.name)
+
+            # Determine question based on event in filename
+            q = None
+            for event_key, question in self.QUESTIONS.items():
+                if event_key in p.name:
+                    q = question; break
+            if q is None: continue
+
+            answer = self._ask(str(p), q, model)
+
+            if answer == "NO":
+                print(f"  [OllamaVerifier] ✗ FALSE POSITIVE → removing {p.name}")
+                try:
+                    p.unlink()
+                    self._remove_log_entry(p.name)
+                except Exception as e:
+                    print(f"  [OllamaVerifier] delete error: {e}")
+            else:
+                print(f"  [OllamaVerifier] ✓ confirmed {p.name}")
+                self._save_to_training(p)
+
+    def _ask(self, image_path, question, model):
+        try:
+            import requests, base64
+            with open(image_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            r = requests.post(
+                "http://localhost:11434/api/generate",
+                json={"model": model, "prompt": question,
+                      "images": [b64], "stream": False,
+                      "options": {"temperature": 0.05, "num_predict": 6}},
+                timeout=45
+            )
+            if r.ok:
+                resp = r.json().get("response", "").strip().upper()
+                if "NO" in resp and "YES" not in resp: return "NO"
+                if "YES" in resp: return "YES"
+        except Exception as e:
+            print(f"  [OllamaVerifier] Ollama error: {e}")
+        return "YES"   # default: keep on error / uncertain
+
+    def _remove_log_entry(self, filename):
+        if not self._log_file.exists(): return
+        try:
+            lines = self._log_file.read_text(errors="ignore").splitlines()
+            kept  = [l for l in lines if filename not in l]
+            self._log_file.write_text("\n".join(kept) + "\n")
+        except Exception as e:
+            print(f"  [OllamaVerifier] log update error: {e}")
+
+    def _save_to_training(self, photo_path):
+        """Copy confirmed alert to training_data/verify/ for future training."""
+        try:
+            out = self._train_dir / "verified"
+            out.mkdir(parents=True, exist_ok=True)
+            dest = out / photo_path.name
+            if not dest.exists():
+                import shutil; shutil.copy2(photo_path, dest)
+        except Exception:
+            pass
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  BEHAVIOR ENGINE  (per-camera state machine)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -899,6 +1022,10 @@ def main():
         FaceWorker(cam).start()
         BehaviorEngine(cam).start()
         print(f"  ✓ Workers for {cam.name}")
+
+    # Ollama false-positive verifier (runs if USE_OLLAMA=true)
+    OllamaVerifier().start()
+    print(f"  ✓ OllamaVerifier")
 
     print(f"\n[INFO] Monitoring {n} camera(s). Press Q to quit.\n")
 

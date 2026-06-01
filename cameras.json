@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,  "name": "D1",
+    "ip": "192.168.30.5", "user": "admin", "pass": "Masters@6677",
+    "port": 554, "channel": 1,  "type": "dahua", "rtsp_path": ""
+  },
+  {
+    "id": 2,  "name": "D2",
+    "ip": "192.168.30.5", "user": "admin", "pass": "Masters@6677",
+    "port": 554, "channel": 2,  "type": "dahua", "rtsp_path": ""
+  },
+  {
+    "id": 6,  "name": "D6",
+    "ip": "192.168.30.5", "user": "admin", "pass": "Masters@6677",
+    "port": 554, "channel": 6,  "type": "dahua", "rtsp_path": ""
+  },
+  {
+    "id": 9,  "name": "D9",
+    "ip": "192.168.30.5", "user": "admin", "pass": "Masters@6677",
+    "port": 554, "channel": 9,  "type": "dahua", "rtsp_path": ""
+  },
+  {
+    "id": 19, "name": "D19",
+    "ip": "192.168.30.5", "user": "admin", "pass": "Masters@6677",
+    "port": 554, "channel": 19, "type": "dahua", "rtsp_path": ""
+  },
+  {
+    "id": 31, "name": "D31",
+    "ip": "192.168.30.5", "user": "admin", "pass": "Masters@6677",
+    "port": 554, "channel": 31, "type": "dahua", "rtsp_path": ""
+  },
+  {
+    "id": 44, "name": "D44",
+    "ip": "192.168.30.5", "user": "admin", "pass": "Masters@6677",
+    "port": 554, "channel": 44, "type": "dahua", "rtsp_path": ""
+  }
+]
