@@ -329,6 +329,53 @@ def prepare_dataset(use_augmented=True):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  CLASS WEIGHT COMPUTATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def compute_class_weights(lbl_dir: Path) -> float:
+    """
+    Compute the positive-class weight (cls_pw) scalar for YOLOv8 training.
+
+    YOLOv8 accepts a single scalar multiplier for the positive class weight in
+    the BCE classification loss.  A value > 1.0 penalises the model more for
+    missing rare classes — reduces false negatives on minority classes such as
+    phone_ear or sleeping when those are under-represented in the dataset.
+
+    Formula: cls_pw = median_count / min_count  (capped at 5.0)
+    A ratio of 1.0 means all classes are balanced; >1.0 means rare classes need
+    extra upweighting.  Cap at 5.0 prevents extreme gradients.
+
+    Returns
+    -------
+    float  — scalar cls_pw for model.train(cls_pw=...)
+    """
+    counts = {}
+    for lbl_file in lbl_dir.glob("*.txt"):
+        for line in lbl_file.read_text().splitlines():
+            p = line.strip().split()
+            if p:
+                cls = int(p[0])
+                if cls < len(CLASSES):
+                    counts[cls] = counts.get(cls, 0) + 1
+
+    if not counts:
+        return 1.0
+
+    present = [counts[i] for i in range(len(CLASSES)) if counts.get(i, 0) > 0]
+    if len(present) < 2:
+        return 1.0
+
+    min_count    = min(present)
+    median_count = sorted(present)[len(present) // 2]
+    cls_pw       = min(median_count / max(min_count, 1), 5.0)
+
+    print(f"  Class counts : { {CLASSES[i]: counts.get(i,0) for i in range(len(CLASSES))} }")
+    print(f"  cls_pw       : {cls_pw:.2f}  "
+          f"(>1 = rare classes weighted higher to reduce false negatives)")
+    return cls_pw
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  AUTO MODEL SELECTION
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -377,13 +424,18 @@ def train(use_augmented=True):
     # Longer training for small data (early stopping prevents waste)
     epochs = 200 if n_train < 200 else 150
 
+    # Class-weighted loss — reduces false negatives on minority classes
+    # (e.g. phone_ear or sleeping when they are under-represented)
+    cls_pw = compute_class_weights(TRAIN_DIR / "labels")
+
     print(f"\n[3/3] Training:")
     print(f"  Original images  : {n_orig}")
     print(f"  Augmented added  : {n_aug_generated}")
     print(f"  Total train      : {n_train}  |  Val: {n_val} (UNSEEN)")
     print(f"  Base model       : {base}")
     print(f"  Frozen layers    : {freeze_layers}  (backbone kept fixed)")
-    print(f"  Max epochs       : {epochs}  (early stop at patience=40)\n")
+    print(f"  Max epochs       : {epochs}  (early stop at patience=40)")
+    print(f"  cls_pw           : {cls_pw:.2f}\n")
 
     from ultralytics import YOLO
     model = YOLO(base)
@@ -394,7 +446,7 @@ def train(use_augmented=True):
         batch   = 8 if n_train < 200 else 16,
         device  = "cuda" if torch.cuda.is_available() else "cpu",
 
-        # Learning
+        # Learning — conservative LR for fine-tuning pre-trained backbone
         lr0     = 0.0003,
         lrf     = 0.003,
         cos_lr  = True,
@@ -402,15 +454,19 @@ def train(use_augmented=True):
         warmup_momentum = 0.8,
         momentum        = 0.937,
 
-        # Regularisation — anti-overfitting
+        # Regularisation — anti-overfitting for small overhead-camera datasets
         weight_decay    = 0.001,
         label_smoothing = 0.1,
         dropout         = 0.1,
+
+        # Class-weighted BCE loss — penalises more for missing rare classes
+        cls_pw  = cls_pw,
 
         # Frozen backbone — only train detection heads
         freeze  = freeze_layers,
 
         # Online augmentation (on top of offline)
+        # Note: flipud=0 because overhead cameras have fixed orientation
         mosaic      = 1.0,
         copy_paste  = 0.2,
         mixup       = 0.08,

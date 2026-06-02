@@ -13,7 +13,8 @@ load_dotenv()
 USE_OLLAMA   = os.getenv("USE_OLLAMA",   "false").lower() == "true"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llava:latest")
 
-LOGS_DIR   = "logs"
+_BASE      = os.path.dirname(os.path.abspath(__file__))   # always project root
+LOGS_DIR   = os.path.join(_BASE, "logs")
 PHOTOS_DIR = os.path.join(LOGS_DIR, "photos")
 LOGS_FILE  = os.path.join(LOGS_DIR, "logs.txt")
 

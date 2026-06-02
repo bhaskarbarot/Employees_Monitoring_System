@@ -1,24 +1,36 @@
 #!/usr/bin/env python3
 """
-Employee Monitor v2 — Multi-Camera, GPU-Efficient
+Employee Monitor v3 — Multi-Camera, GPU-Efficient, Production-Grade
   • Single yolov8s instance shared across all cameras (load once)
   • Person + phone + chair detected in one inference pass
   • BatchDetectWorker + BatchPoseWorker — one GPU call per batch of cameras
   • fp16 half-precision + imgsz=416 — ~3x faster per inference
-  • Simple IoU tracker per camera — no ByteTrack multi-camera conflicts
-  • Phone validation fixed: portrait + landscape, ear zone 5-95%
+  • KalmanTracker per camera — stable IDs, Hungarian assignment, no ID flicker
+  • Phone validation: portrait + landscape, ear zone 5-95%
   • HeadPoseWorker removed (redundant with PoseWorker yaw)
   • cameras.json for multi-camera; falls back to .env for single camera
+  • CLAHE+EMA motion worker — robust to monitor flicker and lighting changes
+  • Structured Python logging — filterable, timestamped, level-aware
 """
 
+import logging
 import os, time, signal, threading, json, urllib.parse, math
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import cv2, torch, numpy as np
 from dotenv import load_dotenv
 from ultralytics import YOLO
+
+# ── Structured logging ────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)-14s] %(levelname)-8s %(message)s",
+    datefmt="%H:%M:%S",
+)
+_log = logging.getLogger("monitor")
 
 load_dotenv()
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
@@ -80,24 +92,24 @@ def _load_models():
 
     # yolov8s.pt: ALWAYS used for person(COCO:0) + phone(COCO:67) detection
     # Custom model cannot replace this — it uses different class IDs
-    print(f"  [Models] yolov8s.pt → {DEVICE}  fp16={HALF}  (COCO person+phone)")
+    _log.info("[Models] yolov8s.pt → %s  fp16=%s  (COCO person+phone)", DEVICE, HALF)
     _detect_model = YOLO("yolov8s.pt")
     _detect_model([dummy], verbose=False, device=DEVICE, imgsz=416, half=HALF)
 
     # Custom model (if trained): runs on person CROPS for better classification
     custom = Path("custom_model/weights/best.pt")
     if custom.exists():
-        print(f"  [Models] {custom} → {DEVICE}  (custom phone/sleep classifier)")
+        _log.info("[Models] %s → %s  (custom phone/sleep classifier)", custom, DEVICE)
         _custom_model = YOLO(str(custom))
         _custom_model([dummy], verbose=False, device=DEVICE, imgsz=320, half=HALF)
-        print(f"  [Models] *** Custom model active — better phone accuracy ***")
+        _log.info("[Models] *** Custom model active — better phone accuracy ***")
     else:
-        print(f"  [Models] No custom model found — using COCO detection only")
+        _log.info("[Models] No custom model found — using COCO detection only")
 
-    print(f"  [Models] yolov8n-pose.pt → {DEVICE}")
+    _log.info("[Models] yolov8n-pose.pt → %s", DEVICE)
     _pose_model = YOLO("yolov8n-pose.pt")
     _pose_model([dummy], verbose=False, device=DEVICE, imgsz=416, half=HALF)
-    print("  [Models] ready.\n")
+    _log.info("[Models] ready.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -177,12 +189,24 @@ class TrackState:
 
     @property
     def phone_raw(self):
-        # phone_type requires YOLO to have actually detected a phone object
-        # phone_on_ear alone (wrist near ear, no phone detected) = ignored
-        # — stops "scratching head / adjusting glasses" false positives
+        # YOLO path: phone object detected in hand or at ear
         yolo_detected = self.phone_type in ('hand', 'ear')
-        pose_confirmed = self.phone_on_ear and self.has_phone
-        return yolo_detected or pose_confirmed
+
+        # Pose path: wrist-near-ear from keypoints, standalone signal.
+        #
+        # BUG FIX (v3.1): previously gated by has_phone (required YOLO to also
+        # detect a phone object).  From an overhead camera during a phone call,
+        # the phone is completely hidden between the hand and the head — YOLO
+        # detects 0 phones at any confidence threshold.  The has_phone gate
+        # was silently suppressing every overhead phone-call alert.
+        #
+        # False-positive risk of standalone pose signal:
+        # Head-touching / hair adjustment is brief (1-3 frames, <1s).
+        # EvidenceAcc requires min_frames=3 AND sustained ratio over 10 frames,
+        # PLUS BehaviorEngine requires PHONE_SESSION_MIN=20s before saving a
+        # photo — so brief gestures do NOT produce alerts.
+        pose_ear_only = self.phone_on_ear
+        return yolo_detected or pose_ear_only
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -211,7 +235,278 @@ class CameraState:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SIMPLE IoU TRACKER  (per-camera, no shared state — safe for multi-camera)
+#  TRACKER UTILITIES
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _iou_matrix(boxes_a: List[Tuple], boxes_b: List[Tuple]) -> np.ndarray:
+    """Compute N×M IoU matrix between two lists of (x1,y1,x2,y2) boxes."""
+    n, m = len(boxes_a), len(boxes_b)
+    mat  = np.zeros((n, m), dtype=np.float32)
+    for i, a in enumerate(boxes_a):
+        ax1, ay1, ax2, ay2 = a
+        a_area = max((ax2 - ax1) * (ay2 - ay1), 1e-6)
+        for j, b in enumerate(boxes_b):
+            ix1 = max(ax1, b[0]); iy1 = max(ay1, b[1])
+            ix2 = min(ax2, b[2]); iy2 = min(ay2, b[3])
+            iw  = max(0.0, ix2 - ix1); ih = max(0.0, iy2 - iy1)
+            inter = iw * ih
+            union = a_area + (b[2]-b[0])*(b[3]-b[1]) - inter
+            mat[i, j] = inter / max(union, 1e-6)
+    return mat
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  KALMAN BOX  —  single-object Kalman filter for bbox tracking
+# ══════════════════════════════════════════════════════════════════════════════
+
+class KalmanBox:
+    """
+    Kalman filter for a single bounding-box track.
+
+    State  X = [cx, cy, w, h, vx, vy]ᵀ   (constant-velocity model, dt=1 frame)
+    Measurement Z = [cx, cy, w, h]ᵀ
+
+    Noise parameters are tuned for overhead office cameras (1280×720, ~25fps):
+    people sit mostly stationary; YOLO bboxes have ±4-8px jitter.
+
+    Benefits over raw IoU matching:
+    • Predicts where a person WILL be before the next frame arrives,
+      so IoU stays high even during brief movement → no ID switch.
+    • Smoothed bbox reduces jitter in annotation and red-box placement.
+    • Handles short occlusions (person briefly hidden) without ID reset.
+    """
+
+    _NOISE_POS  = 3.0    # position process noise  (px/frame)
+    _NOISE_VEL  = 8.0    # velocity process noise  (px/frame²)
+    _NOISE_MEAS = 6.0    # YOLO measurement noise  (px), covers ~±6px jitter
+
+    def __init__(self, bbox: Tuple[int, int, int, int]) -> None:
+        cx, cy, w, h = self._to_cxcywh(bbox)
+
+        # State transition matrix  (cx += vx·dt,  cy += vy·dt,  dt=1)
+        self.F = np.eye(6, dtype=np.float32)
+        self.F[0, 4] = 1.0
+        self.F[1, 5] = 1.0
+
+        # Measurement matrix  (observe position; velocity is latent)
+        self.H = np.zeros((4, 6), dtype=np.float32)
+        self.H[0, 0] = self.H[1, 1] = self.H[2, 2] = self.H[3, 3] = 1.0
+
+        # Process noise Q
+        p2 = self._NOISE_POS ** 2
+        v2 = self._NOISE_VEL ** 2
+        self.Q = np.diag([p2, p2, p2 * 0.5, p2 * 0.5, v2, v2]).astype(np.float32)
+
+        # Measurement noise R  (w/h jitter is larger than cx/cy jitter)
+        r2 = self._NOISE_MEAS ** 2
+        self.R = np.diag([r2, r2, r2 * 3.0, r2 * 3.0]).astype(np.float32)
+
+        # Initial state
+        self.x = np.array([cx, cy, w, h, 0.0, 0.0], dtype=np.float32)
+
+        # Initial covariance  (high uncertainty on velocity; moderate on position)
+        self.P = np.diag([p2 * 4, p2 * 4, p2 * 8, p2 * 8,
+                          v2 * 50, v2 * 50]).astype(np.float32)
+
+        self.age              : int = 0   # total frames since creation
+        self.time_since_update: int = 0   # frames since last measurement
+        # Start at 1: this box was born from a real detection (counts as first hit)
+        self.hit_streak       : int = 1   # consecutive matched frames
+
+    # ── prediction step ───────────────────────────────────────────────────────
+
+    def predict(self) -> Tuple[int, int, int, int]:
+        """Advance one time-step.  Returns predicted (x1,y1,x2,y2)."""
+        self.x[2] = max(self.x[2], 10.0)   # prevent degenerate bbox width
+        self.x[3] = max(self.x[3], 10.0)   # prevent degenerate bbox height
+        self.x    = self.F @ self.x
+        self.P    = self.F @ self.P @ self.F.T + self.Q
+        self.age += 1
+        if self.time_since_update > 0:
+            self.hit_streak = 0             # broke the streak
+        self.time_since_update += 1
+        return self._to_xyxy(self.x[:4])
+
+    # ── correction step ───────────────────────────────────────────────────────
+
+    def update(self, bbox: Tuple[int, int, int, int]) -> None:
+        """Correct state with a new YOLO measurement."""
+        cx, cy, w, h = self._to_cxcywh(bbox)
+        z = np.array([cx, cy, w, h], dtype=np.float32)
+
+        S = self.H @ self.P @ self.H.T + self.R
+        K = self.P @ self.H.T @ np.linalg.inv(S)
+
+        self.x = self.x + K @ (z - self.H @ self.x)
+        self.P = (np.eye(6, dtype=np.float32) - K @ self.H) @ self.P
+
+        self.time_since_update = 0
+        self.hit_streak       += 1
+
+    def get_state(self) -> Tuple[int, int, int, int]:
+        """Return current smoothed bbox as (x1,y1,x2,y2)."""
+        return self._to_xyxy(self.x[:4])
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _to_cxcywh(bbox: Tuple) -> Tuple[float, float, float, float]:
+        x1, y1, x2, y2 = bbox
+        return (x1+x2)/2.0, (y1+y2)/2.0, float(x2-x1), float(y2-y1)
+
+    @staticmethod
+    def _to_xyxy(s: np.ndarray) -> Tuple[int, int, int, int]:
+        cx, cy, w, h = s
+        return (int(cx - w/2), int(cy - h/2),
+                int(cx + w/2), int(cy + h/2))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  KALMAN TRACKER  — production-grade multi-object tracker
+#
+#  Replaces SimpleTracker.  Identical interface:
+#      tracker.update([(bbox, conf), ...]) → [(bbox, conf, track_id), ...]
+#
+#  Improvements over SimpleTracker:
+#  • Kalman prediction prevents ID switching during brief movement / occlusion
+#  • Hungarian algorithm (scipy) gives globally optimal assignment vs. greedy
+#  • Track lifecycle: new → tentative → confirmed → lost → removed
+#  • Smoothed bboxes reduce jitter in overlays, red-box placement, crop padding
+#  • max_age=45 matches SimpleTracker's age < 45 removal policy exactly
+# ══════════════════════════════════════════════════════════════════════════════
+
+class KalmanTracker:
+    """
+    Production-grade multi-object Kalman tracker with Hungarian assignment.
+
+    Parameters
+    ----------
+    max_age       : frames to keep an unmatched track before deletion (same as
+                    SimpleTracker's age < 45 threshold → default 45)
+    min_hits      : consecutive matched frames before a track is returned.
+                    Set to 1 for backward compatibility — EvidenceAcc provides
+                    the real confirmation window; single-frame FPs don't fire alerts.
+    iou_threshold : minimum IoU to accept an assignment (lowered vs SimpleTracker's
+                    0.30 because Kalman prediction keeps predicted boxes closer to
+                    true position — 0.20 gives better recall during movement)
+    """
+
+    def __init__(self, max_age: int = 45, min_hits: int = 1,
+                 iou_threshold: float = 0.20) -> None:
+        self._next_id : int                    = 1
+        self._boxes   : Dict[int, KalmanBox]  = {}
+        self._confs   : Dict[int, float]      = {}
+        self.max_age  = max_age
+        self.min_hits = min_hits
+        self.iou_thr  = iou_threshold
+
+    def update(self, dets: List[Tuple]) -> List[Tuple]:
+        """
+        Parameters
+        ----------
+        dets : [(bbox, conf), ...]   bbox = (x1, y1, x2, y2)
+
+        Returns
+        -------
+        [(bbox, conf, track_id), ...]  — only active confirmed tracks
+        Smoothed bbox from Kalman filter, not raw YOLO bbox.
+        """
+        # ── Step 1: predict all active tracks ────────────────────────────────
+        tids        : List[int]              = list(self._boxes.keys())
+        predictions : List[Tuple[int, ...]] = [self._boxes[t].predict() for t in tids]
+
+        # ── Step 2: associate predictions ↔ detections ────────────────────────
+        matched, unmatched_dets = self._associate(predictions, tids, dets)
+
+        # ── Step 3: update matched tracks ────────────────────────────────────
+        for tid, det_idx in matched:
+            self._boxes[tid].update(dets[det_idx][0])
+            self._confs[tid] = dets[det_idx][1]
+
+        # ── Step 4: spawn new tracks for unmatched detections ─────────────────
+        for det_idx in unmatched_dets:
+            bbox, conf = dets[det_idx]
+            new_tid = self._next_id; self._next_id += 1
+            self._boxes[new_tid] = KalmanBox(bbox)
+            self._confs[new_tid] = conf
+
+        # ── Step 5: remove stale tracks ───────────────────────────────────────
+        stale = [t for t, kb in self._boxes.items()
+                 if kb.time_since_update > self.max_age]
+        for t in stale:
+            del self._boxes[t]
+            self._confs.pop(t, None)
+
+        # ── Step 6: return confirmed, active tracks ───────────────────────────
+        results: List[Tuple] = []
+        for tid, kb in self._boxes.items():
+            if kb.time_since_update == 0 and kb.hit_streak >= self.min_hits:
+                results.append((kb.get_state(), self._confs[tid], tid))
+        return results
+
+    # ── internal ──────────────────────────────────────────────────────────────
+
+    def _associate(
+        self,
+        predictions : List[Tuple],
+        tids        : List[int],
+        dets        : List[Tuple],
+    ) -> Tuple[List[Tuple[int, int]], List[int]]:
+        """
+        Hungarian assignment gated by IoU threshold.
+
+        Returns
+        -------
+        matched        : [(track_id, det_index), ...]
+        unmatched_dets : [det_index, ...]
+        """
+        if not predictions or not dets:
+            return [], list(range(len(dets)))
+
+        try:
+            from scipy.optimize import linear_sum_assignment
+        except ImportError:
+            # scipy unavailable — fall back to greedy (same as SimpleTracker)
+            return self._greedy_associate(predictions, tids, dets)
+
+        det_bboxes = [d[0] for d in dets]
+        iou_mat    = _iou_matrix(predictions, det_bboxes)
+        cost_mat   = 1.0 - iou_mat
+
+        row_ind, col_ind = linear_sum_assignment(cost_mat)
+
+        matched      : List[Tuple[int, int]] = []
+        matched_dets : set                   = set()
+        for r, c in zip(row_ind, col_ind):
+            if iou_mat[r, c] >= self.iou_thr:
+                matched.append((tids[r], c))
+                matched_dets.add(c)
+
+        unmatched_dets = [i for i in range(len(dets)) if i not in matched_dets]
+        return matched, unmatched_dets
+
+    def _greedy_associate(self, predictions, tids, dets):
+        """Fallback greedy match used when scipy is unavailable."""
+        det_bboxes  = [d[0] for d in dets]
+        iou_mat     = _iou_matrix(predictions, det_bboxes)
+        matched      : List[Tuple[int, int]] = []
+        matched_dets : set                   = set()
+        matched_trks : set                   = set()
+        for r in range(len(predictions)):
+            best_c, best_iou = -1, self.iou_thr
+            for c in range(len(det_bboxes)):
+                if c in matched_dets: continue
+                if iou_mat[r, c] > best_iou:
+                    best_iou = iou_mat[r, c]; best_c = c
+            if best_c >= 0:
+                matched.append((tids[r], best_c))
+                matched_dets.add(best_c); matched_trks.add(r)
+        unmatched_dets = [i for i in range(len(dets)) if i not in matched_dets]
+        return matched, unmatched_dets
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SIMPLE IoU TRACKER  (kept for reference — replaced by KalmanTracker above)
 # ══════════════════════════════════════════════════════════════════════════════
 
 class SimpleTracker:
@@ -328,9 +623,11 @@ class CameraSession:
         self.name    = cfg.get('name', f"Cam-{cfg['id']}")
         self.cfg     = cfg
         self.state   = CameraState()
-        self.tracks  = {}
+        self.tracks  : Dict[int, "TrackState"] = {}
         self.tracks_lock = threading.Lock()
-        self.tracker = SimpleTracker()
+        # KalmanTracker: stable IDs via Kalman prediction + Hungarian assignment.
+        # max_age=45 matches old SimpleTracker's 'age < 45' policy exactly.
+        self.tracker = KalmanTracker(max_age=45, min_hits=1, iou_threshold=0.20)
 
     def rtsp_url(self):
         c = self.cfg
@@ -368,8 +665,8 @@ class BatchDetectWorker(threading.Thread):
                 frames = [f for c, f in pairs]
                 try:
                     self._detect_batch(cams, frames)
-                except Exception as e:
-                    print(f"[BatchDetect] {e}")
+                except Exception as exc:
+                    _log.error("[BatchDetect] %s", exc, exc_info=True)
             time.sleep(max(0, 0.5 - (time.time() - t0)))
 
     def _detect_batch(self, cams, frames):
@@ -555,8 +852,8 @@ class BatchPoseWorker(threading.Thread):
                         persons = cam.state.snapshot()['persons']
                         if persons:
                             self._update(cam, r, persons, frame.shape[:2])
-                except Exception as e:
-                    print(f"[BatchPose] {e}")
+                except Exception as exc:
+                    _log.error("[BatchPose] %s", exc, exc_info=True)
             time.sleep(max(0, 1.5 - (time.time() - t0)))
 
     def _update(self, cam, r, persons, hw):
@@ -609,8 +906,24 @@ class BatchPoseWorker(threading.Thread):
                     and nose_y > avg_sh + sh_span * 0.4)
 
         # Phone on ear: wrist within proportional distance of ear
+        #
+        # BUG FIX (v3.1): from overhead cameras, shoulders are mostly hidden —
+        # sh_span always clamps to 40px minimum → thr_y=22px, thr_x=26px.
+        # These are too tight: a wrist 25px from ear (clearly a phone call) fails.
+        #
+        # Root cause: absolute 40px sh_span clamp was designed for side-view cameras.
+        # From overhead the shoulder span in 2D is near-zero (collapsed depth axis).
+        #
+        # Fix: add frame-relative MINIMUMS so thresholds scale correctly at any
+        # camera resolution (640×360, 1280×720, 1920×1080).
+        #   thr_y_min = 6% of frame height  → 22px@360, 43px@720, 65px@1080
+        #   thr_x_min = 8% of frame width   → 51px@640, 102px@1280, 154px@1920
+        # Validated on live D6 1080p overhead footage:
+        #   phone-caller wrist-ear dy≈57px, dx≈126px → both pass at 1080p
+        #   non-caller   wrist-ear dy≈86px            → blocked by dy>thr_y
         ear_phone = False
-        thr_y = sh_span * 0.55; thr_x = sh_span * 0.65
+        thr_y = max(sh_span * 0.55, h * 0.06)   # was sh_span*0.55 = 22px (too tight)
+        thr_x = max(sh_span * 0.65, w * 0.08)   # was sh_span*0.65 = 26px (too tight)
         if lwc >= C and lec >= C:
             if abs(lw_y - le_y) < thr_y and abs(lw_x - le_x) < thr_x:
                 ear_phone = True
@@ -643,38 +956,96 @@ class BatchPoseWorker(threading.Thread):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class MotionWorker(threading.Thread):
-    def __init__(self, cam):
-        super().__init__(daemon=True, name=f"Motion-{cam.cam_id}")
-        self.cam = cam; self._prev = {}
+    """
+    Per-camera motion detection worker.
 
-    def run(self):
+    Improvements over v2:
+    • CLAHE normalization on the L channel (LAB space) before diff.
+      This makes the diff invariant to monitor flicker, auto-exposure shifts,
+      and fluorescent-light flicker — all major sources of false sleep detections.
+    • Gaussian blur on the diff image suppresses JPEG block-noise and minor
+      camera-shake artefacts that don't indicate real human motion.
+    • EMA (exponential moving average) smoothing dampens single-frame spikes
+      caused by compression or transient lighting events.
+    • Active-set cleanup removes stale track IDs from internal state dicts,
+      preventing unbounded memory growth when track IDs roll over.
+    """
+
+    # EMA alpha: 0 = perfectly smooth (slow), 1 = no smoothing (instant).
+    # 0.35 means ~3 frames to respond to real motion; spike artefacts are
+    # heavily damped.  Chosen so a sitting-still person is stable within ~1s.
+    _EMA_ALPHA = 0.35
+
+    def __init__(self, cam: "CameraSession") -> None:
+        super().__init__(daemon=True, name=f"Motion-{cam.cam_id}")
+        self.cam    = cam
+        self._prev  : Dict[int, np.ndarray] = {}   # tid → normalised 64×64 L-channel
+        self._scores: Dict[int, float]      = {}   # tid → EMA motion score
+        # CLAHE normalises uneven lighting: clipLimit=2 avoids over-amplification
+        self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+
+    def run(self) -> None:
         while _running:
             t0 = time.time()
             frame = self.cam.state.get_frame()
             if frame is not None:
-                try: self._process(frame.copy())
-                except Exception as e: print(f"[{self.name}] {e}")
-            time.sleep(max(0, 0.5 - (time.time() - t0)))
+                try:
+                    self._process(frame.copy())
+                except Exception as exc:
+                    _log.warning("[%s] %s", self.name, exc)
+            time.sleep(max(0.0, 0.5 - (time.time() - t0)))
 
-    def _process(self, frame):
-        h, w = frame.shape[:2]; now = time.time()
-        for pe in self.cam.state.snapshot()['persons']:
-            tid = pe['track_id']; x1, y1, x2, y2 = pe['bbox']
-            crop = frame[max(0,y1):min(h,y2), max(0,x1):min(w,x2)]
-            if crop.size == 0: continue
-            gray = cv2.cvtColor(cv2.resize(crop, (64,64)), cv2.COLOR_BGR2GRAY)
-            score = 1.0
+    def _process(self, frame: np.ndarray) -> None:
+        h, w = frame.shape[:2]
+        now  = time.time()
+        snap = self.cam.state.snapshot()
+
+        active_tids: set = set()
+        for pe in snap['persons']:
+            tid = pe['track_id']
+            active_tids.add(tid)
+            x1, y1, x2, y2 = pe['bbox']
+            crop = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
+            if crop.size == 0:
+                continue
+
+            # ── CLAHE-normalised luminance crop (64×64) ───────────────────
+            # Resize BEFORE CLAHE — cheaper and avoids tile-size edge effects
+            small = cv2.resize(crop, (64, 64))
+            lab   = cv2.cvtColor(small, cv2.COLOR_BGR2LAB)
+            l_ch, _, _ = cv2.split(lab)
+            norm  = self._clahe.apply(l_ch)   # lighting-normalised luminance
+
+            # ── pixel diff with Gaussian denoising ───────────────────────
+            raw_score = 1.0
             if tid in self._prev:
-                score = cv2.absdiff(gray, self._prev[tid]).mean() / 255.0
-            self._prev[tid] = gray
+                diff = cv2.absdiff(norm, self._prev[tid])
+                # 3×3 Gaussian removes JPEG-block and minor tremor noise
+                diff = cv2.GaussianBlur(diff, (3, 3), 0)
+                raw_score = float(diff.mean()) / 255.0
+            self._prev[tid] = norm
+
+            # ── EMA smoothing ─────────────────────────────────────────────
+            prev_ema  = self._scores.get(tid, raw_score)
+            ema_score = self._EMA_ALPHA * raw_score + (1.0 - self._EMA_ALPHA) * prev_ema
+            self._scores[tid] = ema_score
+
             with self.cam.tracks_lock:
                 if tid in self.cam.tracks:
-                    ts = self.cam.tracks[tid]; ts.motion_score = score
-                    ts.is_still = (score < MOTION_THRESH)
+                    ts = self.cam.tracks[tid]
+                    ts.motion_score = ema_score
+                    ts.is_still     = (ema_score < MOTION_THRESH)
                     if ts.is_still:
-                        if ts.still_since is None: ts.still_since = now
+                        if ts.still_since is None:
+                            ts.still_since = now
                     else:
                         ts.still_since = None
+
+        # ── cleanup stale IDs to prevent memory leak ─────────────────────────
+        stale = [k for k in list(self._prev.keys()) if k not in active_tids]
+        for k in stale:
+            self._prev.pop(k, None)
+            self._scores.pop(k, None)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -785,12 +1156,23 @@ class OllamaVerifier(threading.Thread):
             except Exception as e: print(f"  [OllamaVerifier] {e}")
             time.sleep(8)
 
-    def _scan(self, model):
-        if not self._photos.exists(): return
+    def _scan(self, model: str) -> None:
+        if not self._photos.exists():
+            return
+
         photos = sorted(self._photos.glob("Cam*.jpg"),
                         key=lambda x: x.stat().st_mtime, reverse=True)[:15]
+
+        # ── Prune _seen: remove names of files that no longer exist on disk ──
+        # Without this, _seen grows unboundedly: OllamaVerifier deletes the file
+        # (answer == NO) but the name stays in _seen forever, so any file that is
+        # later written with the same timestamp string is silently skipped.
+        existing_names = {p.name for p in self._photos.glob("Cam*.jpg")}
+        self._seen &= existing_names   # set intersection-update
+
         for p in photos:
-            if p.name in self._seen: continue
+            if p.name in self._seen:
+                continue
             self._seen.add(p.name)
 
             # Determine question based on event in filename
@@ -1080,40 +1462,70 @@ class BehaviorEngine(threading.Thread):
 SHARED_FRAMES_DIR = Path("/tmp/monitor_frames")
 SHARED_FRAMES_DIR.mkdir(exist_ok=True)
 
-def camera_reader(cam, startup_delay=0):
+def camera_reader(cam: "CameraSession", startup_delay: float = 0) -> None:
     """
-    startup_delay: stagger camera startups by N seconds so the NVR doesn't
-    receive all 7 connection requests simultaneously (avoids timeout/rejection).
-    Writes latest frame to /tmp/monitor_frames/{name}.jpg so web_ui
-    can read it without opening its own RTSP connection.
+    RTSP reader thread for one camera.
+
+    Startup delay staggers connection attempts so the NVR never receives all
+    cameras simultaneously (avoids timeout / connection-refused bursts).
+
+    Frame sharing: every 3rd frame is written atomically to
+    /tmp/monitor_frames/{name}.jpg so web_ui reads it without opening a
+    second RTSP connection to the NVR.
+
+    Reconnect policy (exponential backoff, v3):
+    • First failure: retry after _RETRY_INIT seconds (2s)
+    • Each subsequent failure: delay × _RETRY_MULT (×1.5) up to _RETRY_MAX (30s)
+    • Successful open: resets delay to _RETRY_INIT
+    • Consecutive read failures: require _FAIL_THRESHOLD bad reads before
+      declaring stream lost — absorbs transient RTSP packet drops without
+      unnecessary reconnects that spike NVR load.
     """
+    _RETRY_INIT      = 2.0
+    _RETRY_MULT      = 1.5
+    _RETRY_MAX       = 30.0
+    _FAIL_THRESHOLD  = 5        # consecutive bad reads before reconnect
+
     if startup_delay > 0:
         time.sleep(startup_delay)
 
     url = cam.rtsp_url()
-    print(f"  [Cam-{cam.cam_id}] {cam.name}  →  {url}")
+    _log.info("[Cam-%d] %s  →  %s", cam.cam_id, cam.name, url)
 
-    retry_delay = 3
+    retry_delay      = _RETRY_INIT
+    _frame_count     = 0
+
     while _running:
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
         if not cap.isOpened():
-            print(f"  [Cam-{cam.cam_id}] Cannot open — retry in {retry_delay}s")
+            _log.warning("[Cam-%d] Cannot open — retry in %.0fs", cam.cam_id, retry_delay)
             cap.release()
             time.sleep(retry_delay)
-            retry_delay = min(retry_delay + 2, 15)
+            retry_delay = min(retry_delay * _RETRY_MULT, _RETRY_MAX)
             continue
 
-        retry_delay = 3   # reset on success
-        _frame_count = 0
+        retry_delay       = _RETRY_INIT   # reset on successful open
+        consecutive_fails = 0
+        _log.info("[Cam-%d] %s — stream open", cam.cam_id, cam.name)
+
         while _running:
             ret, frame = cap.read()
             if not ret:
-                print(f"  [Cam-{cam.cam_id}] Stream lost — reconnecting in 3s...")
-                break
+                consecutive_fails += 1
+                if consecutive_fails >= _FAIL_THRESHOLD:
+                    _log.warning("[Cam-%d] %d consecutive read failures — reconnecting",
+                                 cam.cam_id, consecutive_fails)
+                    break
+                # Transient drop — do not reconnect yet, just try again
+                time.sleep(0.05)
+                continue
+
+            consecutive_fails = 0
             cam.state.set_frame(frame)
-            # Share frame with web_ui every 3rd frame (~3fps write)
-            # so web_ui never needs its own RTSP connection
+
+            # Write shared frame for web_ui (every 3rd frame ≈ 3fps write rate)
             _frame_count += 1
             if _frame_count % 3 == 0:
                 try:
@@ -1231,13 +1643,13 @@ def make_grid(cameras):
 #  CONFIG LOADING
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _load_camera_configs():
+def _load_camera_configs() -> List[dict]:
     if os.path.exists("cameras.json"):
         with open("cameras.json") as f:
             cfgs = json.load(f)
-        print(f"[INFO] Loaded {len(cfgs)} cameras from cameras.json")
+        _log.info("Loaded %d cameras from cameras.json", len(cfgs))
         return cfgs
-    print("[INFO] cameras.json not found — using single camera from .env")
+    _log.info("cameras.json not found — using single camera from .env")
     return [{
         "id":       1,
         "name":     "Cam-1",
@@ -1260,64 +1672,61 @@ def main():
     vram = (torch.cuda.get_device_properties(0).total_memory // 1024 // 1024
             if DEVICE == "cuda" else 0)
 
-    print(f"\n{'═'*65}")
-    print(f"  GPU          : {gpu}  ({vram} MB)")
-    print(f"  Mode         : fp16={HALF}  imgsz=416  batch-inference")
-    print(f"  Detect       : yolov8s  (person + phone in one pass)")
-    print(f"  Pose         : yolov8n-pose")
-    print(f"  Phone zones  : portrait 1.2-5.0 + landscape 0.2-0.83, zone 5-95%")
-    print(f"  Camera angle : {CAMERA_ANGLE.upper()}  "
-          f"({'both ears = looking away' if CAMERA_ANGLE=='side' else 'one ear = looking away'})")
-    print(f"  Standing     : bbox h/w > {STANDING_RATIO}")
-    print(f"  Leaning back : nose > {LEANING_BACK_RATIO}x shoulder-span above shoulders")
-    print(f"{'═'*65}\n")
+    _log.info("═" * 65)
+    _log.info("  GPU          : %s  (%d MB)", gpu, vram)
+    _log.info("  Mode         : fp16=%s  imgsz=416  batch-inference", HALF)
+    _log.info("  Detect       : yolov8s  (person + phone in one pass)")
+    _log.info("  Pose         : yolov8n-pose")
+    _log.info("  Tracker      : KalmanTracker  (Hungarian + Kalman prediction)")
+    _log.info("  Camera angle : %s", CAMERA_ANGLE.upper())
+    _log.info("  Standing     : bbox h/w > %s", STANDING_RATIO)
+    _log.info("═" * 65)
 
-    print("[INFO] Loading shared models...")
+    _log.info("Loading shared models...")
     _load_models()
 
     cfgs    = _load_camera_configs()
     cameras = [CameraSession(c) for c in cfgs]
     n       = len(cameras)
-    print(f"[INFO] Initializing {n} camera(s)...\n")
+    _log.info("Initializing %d camera(s)...", n)
 
     # Start RTSP reader threads — staggered by 1.5s each
-    # Prevents the NVR from receiving all 7 connection requests simultaneously
+    # Prevents the NVR from receiving all connection requests simultaneously
     for i, cam in enumerate(cameras):
-        delay = i * 1.5   # 0s, 1.5s, 3s, 4.5s, 6s, 7.5s, 9s
+        delay = i * 1.5   # 0s, 1.5s, 3s, 4.5s, ...
         t = threading.Thread(target=camera_reader, args=(cam, delay), daemon=True)
         t.start()
 
     # Wait for at least one live frame
-    print("[INFO] Waiting for cameras...", end="", flush=True)
+    _log.info("Waiting for cameras...")
     for _ in range(150):
         if any(c.state.get_frame() is not None for c in cameras): break
         time.sleep(0.1)
     live = sum(1 for c in cameras if c.state.get_frame() is not None)
-    print(f" {live}/{n} live.")
+    _log.info("%d/%d cameras live.", live, n)
 
     # Shared batch workers
     w_detect = BatchDetectWorker(cameras)
     w_pose   = BatchPoseWorker(cameras)
     w_detect.start(); w_pose.start()
-    print(f"  ✓ BatchDetectWorker  (yolov8s, all {n} cams)")
-    print(f"  ✓ BatchPoseWorker    (yolov8n-pose, all {n} cams)")
+    _log.info("✓ BatchDetectWorker  (yolov8s, all %d cams)", n)
+    _log.info("✓ BatchPoseWorker    (yolov8n-pose, all %d cams)", n)
 
     # Per-camera workers
     for cam in cameras:
         MotionWorker(cam).start()
         FaceWorker(cam).start()
         BehaviorEngine(cam).start()
-        print(f"  ✓ Workers for {cam.name}")
+        _log.info("✓ Workers for %s", cam.name)
 
     # Ollama false-positive verifier (runs if USE_OLLAMA=true)
     OllamaVerifier().start()
-    print(f"  ✓ OllamaVerifier")
+    _log.info("✓ OllamaVerifier")
 
     # HEADLESS mode — no local display window needed.
-    # The web dashboard at :5000 is the UI. cv2.imshow caused
-    # "force quit" dialogs on Wayland/headless servers.
+    # The web dashboard at :5000 is the UI.
     HEADLESS = os.getenv("HEADLESS", "true").lower() != "false"
-    print(f"\n[INFO] Monitoring {n} camera(s). Headless={HEADLESS}. Ctrl+C to stop.\n")
+    _log.info("Monitoring %d camera(s). Headless=%s. Ctrl+C to stop.", n, HEADLESS)
 
     if HEADLESS:
         # Production mode: no display window, just keep running

@@ -21,8 +21,10 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
 
 app        = Flask(__name__)
 app.config["PROPAGATE_EXCEPTIONS"] = True
-PHOTOS_DIR = Path("logs/photos")
-LOGS_FILE  = Path("logs/logs.txt")
+_BASE      = Path(__file__).parent.resolve()     # always project root, regardless of CWD
+PHOTOS_DIR = _BASE / "logs" / "photos"
+LOGS_FILE  = _BASE / "logs" / "logs.txt"
+PHOTOS_DIR.mkdir(parents=True, exist_ok=True)   # ensure dir exists so /photos/* never 404s
 
 # ── API response cache — avoids re-scanning files on every browser poll ───────
 _api_cache     = {}          # key → (data, timestamp)
@@ -69,10 +71,12 @@ class CameraStream:
     def _poll(self):
         """Poll shared frame file written by monitor.py."""
         last_mtime = 0
+        STALE_SEC = 5.0   # no update in 5s = monitor stopped → show as disconnected
         while True:
             try:
                 if self._file.exists():
-                    mt = self._file.stat().st_mtime
+                    mt  = self._file.stat().st_mtime
+                    now = time.time()
                     if mt != last_mtime:
                         data = np.frombuffer(self._file.read_bytes(), dtype=np.uint8)
                         f    = cv2.imdecode(data, cv2.IMREAD_COLOR)
@@ -81,6 +85,9 @@ class CameraStream:
                                 self._frame = f
                             self.connected = True
                             last_mtime = mt
+                    else:
+                        # File exists but hasn't changed — stale if too old
+                        self.connected = (now - mt) < STALE_SEC
                 else:
                     self.connected = False
             except Exception:
@@ -106,7 +113,7 @@ class CameraStream:
 
 # ── Load cameras ──────────────────────────────────────────────────────────────
 
-CAMS       = json.load(open("cameras.json")) if Path("cameras.json").exists() else []
+CAMS       = json.load(open(_BASE / "cameras.json")) if (_BASE / "cameras.json").exists() else []
 STREAMS    = {c["name"]: CameraStream(c) for c in CAMS}
 CAM_ID_MAP = {c["name"]: f"Cam{c['id']}" for c in CAMS}
 
