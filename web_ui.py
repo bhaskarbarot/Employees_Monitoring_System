@@ -45,70 +45,57 @@ def _bust(key):
         _api_cache.pop(key, None)
 
 
-# ── Camera stream ─────────────────────────────────────────────────────────────
+# ── Camera frames — read from monitor.py's shared files (NO direct RTSP) ──────
+#
+# Architecture: monitor.py holds ALL RTSP connections (7 total).
+#   It writes latest frame to /tmp/monitor_frames/{name}.jpg every ~0.3s.
+#   web_ui.py reads those files — ZERO additional RTSP connections to NVR.
+#   This leaves the attendance system's cameras completely undisturbed.
+
+SHARED_FRAMES_DIR = Path("/tmp/monitor_frames")
 
 class CameraStream:
+    """Reads frames from monitor.py's shared files — no RTSP connection."""
+
     def __init__(self, cam):
         self.id        = cam["id"]
         self.name      = cam["name"]
-        self.url       = self._build(cam)
-        self._frame    = None
-        self._lock     = threading.Lock()
         self.connected = False
-        threading.Thread(target=self._run, daemon=True).start()
+        self._file     = SHARED_FRAMES_DIR / f"{self.name}.jpg"
+        self._lock     = threading.Lock()
+        self._frame    = None
+        threading.Thread(target=self._poll, daemon=True).start()
 
-    @staticmethod
-    def _build(cam):
-        pwd  = urllib.parse.quote(str(cam.get("pass", "")), safe="")
-        base = f"rtsp://{cam.get('user','admin')}:{pwd}@{cam['ip']}:{cam.get('port',554)}"
-        if cam.get("rtsp_path"): return base + cam["rtsp_path"]
-        ch = cam.get("channel", 1)
-        return (base + f"/cam/realmonitor?channel={ch}&subtype=0"
-                if cam.get("type","dahua").lower() == "dahua"
-                else base + f"/Streaming/Channels/{ch}01")
-
-    def _run(self):
-        retry_delay = 2
+    def _poll(self):
+        """Poll shared frame file written by monitor.py."""
+        last_mtime = 0
         while True:
             try:
-                cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 6000)
-                cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
-                if not cap.isOpened():
-                    cap.release()
-                    time.sleep(retry_delay)
-                    retry_delay = min(retry_delay * 1.5, 15)
-                    continue
-                retry_delay = 2
-                self.connected = True
-                while True:
-                    t0 = time.time()
-                    ret, frame = cap.read()
-                    if not ret: break
-                    small = cv2.resize(frame, (640, 360))
-                    with self._lock:
-                        self._frame = small
-                    # Hard cap: 10 fps max — 7 cameras × no-limit = 900% CPU
-                    sleep_needed = 0.10 - (time.time() - t0)
-                    if sleep_needed > 0:
-                        time.sleep(sleep_needed)
-                cap.release()
-                self.connected = False
-            except Exception as e:
-                print(f"  [Web-{self.name}] {e}")
-                self.connected = False
-            time.sleep(retry_delay)
+                if self._file.exists():
+                    mt = self._file.stat().st_mtime
+                    if mt != last_mtime:
+                        data = np.frombuffer(self._file.read_bytes(), dtype=np.uint8)
+                        f    = cv2.imdecode(data, cv2.IMREAD_COLOR)
+                        if f is not None:
+                            with self._lock:
+                                self._frame = f
+                            self.connected = True
+                            last_mtime = mt
+                else:
+                    self.connected = False
+            except Exception:
+                pass
+            time.sleep(0.15)   # check for new frame every 150ms (~6fps display)
 
     def jpeg(self, w=640, h=360, q=70):
         with self._lock: f = self._frame
         if f is None:
             f = np.zeros((h, w, 3), dtype=np.uint8)
-            cv2.rectangle(f, (0, 0), (w, h), (18, 18, 18), -1)
-            cv2.putText(f, self.name, (w//2 - 30, h//2 - 12),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (55, 55, 55), 2)
-            cv2.putText(f, "Connecting...", (w//2 - 65, h//2 + 22),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (40, 40, 40), 1)
+            cv2.rectangle(f, (0,0), (w,h), (18,18,18), -1)
+            cv2.putText(f, self.name, (w//2-30, h//2-12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (55,55,55), 2)
+            cv2.putText(f, "Waiting for monitor...", (w//2-90, h//2+22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (40,40,40), 1)
         else:
             fh, fw = f.shape[:2]
             if fw != w or fh != h:
@@ -119,9 +106,9 @@ class CameraStream:
 
 # ── Load cameras ──────────────────────────────────────────────────────────────
 
-CAMS    = json.load(open("cameras.json")) if Path("cameras.json").exists() else []
-STREAMS = {c["name"]: CameraStream(c) for c in CAMS}
-CAM_ID_MAP = {c["name"]: f"Cam{c['id']}" for c in CAMS}   # D2 → Cam2
+CAMS       = json.load(open("cameras.json")) if Path("cameras.json").exists() else []
+STREAMS    = {c["name"]: CameraStream(c) for c in CAMS}
+CAM_ID_MAP = {c["name"]: f"Cam{c['id']}" for c in CAMS}
 
 
 # ── Alert parsing helpers ──────────────────────────────────────────────────────

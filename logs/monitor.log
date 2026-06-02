@@ -17,29 +17,18 @@
   [Models] yolov8n-pose.pt → cuda
   [Models] ready.
 
-[INFO] Loaded 7 cameras from cameras.json
-[INFO] Initializing 7 camera(s)...
+[INFO] Loaded 4 cameras from cameras.json
+[INFO] Initializing 4 camera(s)...
 
-  [Cam-1] D1  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=1&subtype=0
   [Cam-2] D2  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=2&subtype=0
+[INFO] Waiting for cameras... 1/4 live.
+  ✓ BatchDetectWorker  (yolov8s, all 4 cams)
+  ✓ BatchPoseWorker    (yolov8n-pose, all 4 cams)
   [Cam-6] D6  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=6&subtype=0
   [Cam-9] D9  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=9&subtype=0
   [Cam-19] D19  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=19&subtype=0
-  [Cam-31] D31  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=31&subtype=0
-  [Cam-44] D44  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=44&subtype=0
-[INFO] Waiting for cameras.../home/elsner/.local/lib/python3.10/site-packages/onnxruntime/capi/onnxruntime_inference_collection.py:123: UserWarning: Specified provider 'CUDAExecutionProvider' is not in available provider names.Available providers: 'AzureExecutionProvider, CPUExecutionProvider'
+/home/elsner/.local/lib/python3.10/site-packages/onnxruntime/capi/onnxruntime_inference_collection.py:123: UserWarning: Specified provider 'CUDAExecutionProvider' is not in available provider names.Available providers: 'AzureExecutionProvider, CPUExecutionProvider'
   warnings.warn(
-Warning: Ignoring XDG_SESSION_TYPE=wayland on Gnome. Use QT_QPA_PLATFORM=wayland to run on Wayland anyway.
- 1/7 live.
-  ✓ BatchDetectWorker  (yolov8s, all 7 cams)
-  ✓ BatchPoseWorker    (yolov8n-pose, all 7 cams)
-Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
-find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
-Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
-model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
-set det-size: (160, 160)
-  [Face-1] InsightFace ready
-  ✓ Workers for D1
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
 find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
@@ -68,80 +57,8 @@ model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recogni
 set det-size: (160, 160)
   [Face-19] InsightFace ready
   ✓ Workers for D19
-Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
-find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
-Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
-model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
-set det-size: (160, 160)
-  [Face-31] InsightFace ready
-  ✓ Workers for D31
-Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
-find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
-Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
-model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
-set det-size: (160, 160)
-  [Face-44] InsightFace ready
-  ✓ Workers for D44
   ✓ OllamaVerifier
 
-[INFO] Monitoring 7 camera(s). Press Q to quit.
+[INFO] Monitoring 4 camera(s). Headless=True. Ctrl+C to stop.
 
   [OllamaVerifier] started — using llava:latest
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_HAND_20260601_165602.jpg
-  [OllamaVerifier] ✓ confirmed Cam1_PHONE_HAND_20260601_165532.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165449.jpg
-[91m[ALERT][0m [2026-06-01 16:56:26]  [Cam31:D31]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165626.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165626.jpg
-[91m[ALERT][0m [2026-06-01 16:56:59]  [Cam31:D31]  [PHONE_HAND]  0m 13s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165659.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165659.jpg
-[91m[ALERT][0m [2026-06-01 16:57:29]  [Cam31:D31]  [PHONE_HAND]  0m 43s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165729.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165729.jpg
-[91m[ALERT][0m [2026-06-01 16:57:45]  [Cam31:D31]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165745.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165745.jpg
-[91m[ALERT][0m [2026-06-01 16:57:59]  [Cam31:D31]  [PHONE_HAND]  1m 13s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165759.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165759.jpg
-[91m[ALERT][0m [2026-06-01 16:58:07]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165807.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165807.jpg
-[91m[ALERT][0m [2026-06-01 16:58:29]  [Cam31:D31]  [PHONE_HAND]  1m 43s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165829.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165829.jpg
-[91m[ALERT][0m [2026-06-01 16:58:37]  [Cam9:D9]  [PHONE_HAND]  0m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165837.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165837.jpg
-[91m[ALERT][0m [2026-06-01 16:58:50]  [Cam31:D31]  [PHONE_HAND]  0m 02s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165850.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165850.jpg
-[91m[ALERT][0m [2026-06-01 16:58:59]  [Cam31:D31]  [PHONE_HAND]  2m 13s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165859.jpg
-[91m[ALERT][0m [2026-06-01 16:59:05]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165905.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165905.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165859.jpg
-[91m[ALERT][0m [2026-06-01 16:59:07]  [Cam9:D9]  [PHONE_HAND]  1m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165907.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165907.jpg
-[91m[ALERT][0m [2026-06-01 16:59:21]  [Cam31:D31]  [PHONE_HAND]  0m 10s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165921.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165921.jpg
-[91m[ALERT][0m [2026-06-01 16:59:29]  [Cam31:D31]  [PHONE_HAND]  2m 43s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165929.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165929.jpg
-[91m[ALERT][0m [2026-06-01 16:59:35]  [Cam9:D9]  [PHONE_HAND]  0m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165935.jpg
-[91m[ALERT][0m [2026-06-01 16:59:37]  [Cam9:D9]  [PHONE_HAND]  1m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_165937.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165937.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_165935.jpg
-[91m[ALERT][0m [2026-06-01 16:59:42]  [Cam19:D19]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam19_PHONE_HAND_20260601_165942.jpg
-  [OllamaVerifier] ✓ confirmed Cam19_PHONE_HAND_20260601_165942.jpg
-[91m[ALERT][0m [2026-06-01 16:59:59]  [Cam31:D31]  [PHONE_HAND]  3m 13s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_165959.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_165959.jpg
-[91m[ALERT][0m [2026-06-01 17:00:05]  [Cam9:D9]  [PHONE_HAND]  1m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170005.jpg
-[91m[ALERT][0m [2026-06-01 17:00:07]  [Cam9:D9]  [PHONE_HAND]  2m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170007.jpg
-[91m[ALERT][0m [2026-06-01 17:00:09]  [Cam31:D31]  [PHONE_HAND]  0m 20s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_170009.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_170009.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_170007.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_170005.jpg
-[91m[ALERT][0m [2026-06-01 17:00:12]  [Cam19:D19]  [PHONE_HAND]  0m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam19_PHONE_HAND_20260601_170012.jpg
-  [OllamaVerifier] ✓ confirmed Cam19_PHONE_HAND_20260601_170012.jpg
-[91m[ALERT][0m [2026-06-01 17:00:20]  [Cam44:D44]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam44_PHONE_HAND_20260601_170020.jpg
-  [OllamaVerifier] ✓ confirmed Cam44_PHONE_HAND_20260601_170020.jpg
-[91m[ALERT][0m [2026-06-01 17:00:29]  [Cam31:D31]  [PHONE_HAND]  3m 43s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam31_PHONE_HAND_20260601_170029.jpg
-  [OllamaVerifier] ✓ confirmed Cam31_PHONE_HAND_20260601_170029.jpg
-[91m[ALERT][0m [2026-06-01 17:00:35]  [Cam9:D9]  [PHONE_HAND]  1m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170035.jpg
-[91m[ALERT][0m [2026-06-01 17:00:37]  [Cam9:D9]  [PHONE_HAND]  2m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170037.jpg
-[91m[ALERT][0m [2026-06-01 17:00:42]  [Cam19:D19]  [PHONE_HAND]  1m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam19_PHONE_HAND_20260601_170042.jpg
-  [OllamaVerifier] ✓ confirmed Cam19_PHONE_HAND_20260601_170042.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_170037.jpg
-  [OllamaVerifier] ✓ confirmed Cam9_PHONE_HAND_20260601_170035.jpg
-[INFO] Stopped.

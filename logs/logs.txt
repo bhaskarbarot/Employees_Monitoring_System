@@ -823,3 +823,14 @@
 [2026-06-01 17:00:35]  [Cam9:D9]  [PHONE_HAND]  1m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170035.jpg
 [2026-06-01 17:00:37]  [Cam9:D9]  [PHONE_HAND]  2m 30s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260601_170037.jpg
 [2026-06-01 17:00:42]  [Cam19:D19]  [PHONE_HAND]  1m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam19_PHONE_HAND_20260601_170042.jpg
+[2026-06-02 09:31:45]  [Cam44:D44]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam44_PHONE_HAND_20260602_093145.jpg
+[2026-06-02 09:32:15]  [Cam44:D44]  [PHONE_HAND]  0m 04s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam44_PHONE_HAND_20260602_093215.jpg
+[2026-06-02 09:43:36]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260602_094336.jpg
+[2026-06-02 09:55:29]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260602_095529.jpg
+[2026-06-02 09:56:34]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260602_095634.jpg
+[2026-06-02 09:57:19]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260602_095719.jpg
+[2026-06-02 10:00:07]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260602_100007.jpg
+[2026-06-02 10:01:04]  [Cam2:D2]  [PHONE_HAND]  0m 01s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260602_100104.jpg
+[2026-06-02 10:02:31]  [Cam9:D9]  [PHONE_HAND]  0m 02s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260602_100231.jpg
+[2026-06-02 10:03:34]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260602_100334.jpg
+[2026-06-02 10:05:47]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260602_100547.jpg

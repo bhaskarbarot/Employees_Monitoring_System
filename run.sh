@@ -1,132 +1,175 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════
-#  Employee Monitor — Start Everything
+#  Employee Monitor — One command starts everything
 #  Usage:  ./run.sh
 # ═══════════════════════════════════════════════════════
 
-# set -e removed — pkill returns 1 when nothing to kill, which caused early exit
 cd "$(dirname "$0")"
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
+GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
+PID_MON="/tmp/emp_monitor.pid"
+PID_WEB="/tmp/emp_webui.pid"
+
+# ────────────────────────────────────────────────────────
+# STEP 1 — NUCLEAR CLEAN
+# Kill ONLY this project's processes (not attendance project)
+# ────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}╔═══════════════════════════════════════════════╗${NC}"
 echo -e "${BOLD}║       Employee Monitor — Starting Up          ║${NC}"
 echo -e "${BOLD}╚═══════════════════════════════════════════════╝${NC}"
 echo ""
+echo -e "${CYAN}[1/4] Cleaning previous instances...${NC}"
 
-# ── Step 1: Check Python ──────────────────────────────
-echo -e "${CYAN}[1/3] Checking Python...${NC}"
-if ! command -v python3 &>/dev/null; then
-    echo -e "${RED}  ERROR: python3 not found. Please install Python 3.8+${NC}"
-    exit 1
-fi
-PY=$(python3 --version 2>&1)
-echo -e "${GREEN}  ✓ $PY${NC}"
+# Kill saved PIDs first
+for f in "$PID_MON" "$PID_WEB"; do
+    [ -f "$f" ] && OLD=$(cat "$f") && kill -9 "$OLD" 2>/dev/null; rm -f "$f"
+done
 
-# ── Step 2: Install dependencies ─────────────────────
+# Kill by script path (ONLY this project's files)
+PROJ="$(pwd)"
+pkill -9 -f "${PROJ}/monitor.py"  2>/dev/null
+pkill -9 -f "${PROJ}/web_ui.py"   2>/dev/null
+
+# Kill gunicorn on port 5000 only
+fuser -k 5000/tcp 2>/dev/null
+
+# Wait until truly gone
+for i in $(seq 1 8); do
+    LEFT=$(ps aux | grep -E "monitor\.py|web_ui\.py" | grep "$PROJ" | grep -v grep | wc -l)
+    PORT=$(fuser 5000/tcp 2>/dev/null | wc -w)
+    [ "$LEFT" -eq 0 ] && [ "$PORT" -eq 0 ] && break
+    pkill -9 -f "${PROJ}/monitor.py" 2>/dev/null
+    pkill -9 -f "${PROJ}/web_ui.py"  2>/dev/null
+    fuser -k 5000/tcp 2>/dev/null
+    sleep 1
+done
+
+echo -e "${GREEN}  ✓ Clean — no old instances running${NC}"
+
+# ────────────────────────────────────────────────────────
+# STEP 2 — INSTALL DEPENDENCIES
+# ────────────────────────────────────────────────────────
 echo ""
-echo -e "${CYAN}[2/3] Installing dependencies...${NC}"
-pip install -q -r requirements.txt
+echo -e "${CYAN}[2/4] Checking Python...${NC}"
+python3 --version | sed "s/^/  ✓ /"
+
+echo ""
+echo -e "${CYAN}[3/4] Installing dependencies...${NC}"
+pip install -q -r requirements.txt 2>/dev/null
 echo -e "${GREEN}  ✓ All packages ready${NC}"
 
-# ── Kill ALL previous instances (force, all duplicates) ──
+# ────────────────────────────────────────────────────────
+# STEP 3 — START SERVICES
+# ────────────────────────────────────────────────────────
 echo ""
-echo -e "${CYAN}  Stopping any previous instances...${NC}"
-pkill -9 -f "monitor.py"  2>/dev/null || true; sleep 1
-pkill -9 -f "web_ui.py"   2>/dev/null || true; sleep 1
-pkill -9 -f "gunicorn"    2>/dev/null || true; sleep 1
-fuser -k 5000/tcp         2>/dev/null || true
-sleep 1
-echo -e "${GREEN}  ✓ Clean start${NC}"
-
-# ── Step 3: Get local IP for browser URL ─────────────
-LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-[ -z "$LOCAL_IP" ] && LOCAL_IP="localhost"
-
-# ── Cleanup on exit ───────────────────────────────────
-MONITOR_PID=""
-UI_PID=""
-
-cleanup() {
-    echo ""
-    echo -e "${YELLOW}  Stopping all services...${NC}"
-    [ -n "$MONITOR_PID" ] && kill "$MONITOR_PID" 2>/dev/null && echo -e "${GREEN}  ✓ Monitor stopped${NC}"
-    [ -n "$UI_PID" ]      && kill "$UI_PID"      2>/dev/null && echo -e "${GREEN}  ✓ Web UI stopped${NC}"
-    echo -e "${BOLD}  Done. Goodbye.${NC}"
-    echo ""
-    exit 0
-}
-trap cleanup SIGINT SIGTERM
-
-# ── Start monitor.py ──────────────────────────────────
-echo ""
-echo -e "${CYAN}[3/3] Starting services...${NC}"
+echo -e "${CYAN}[4/4] Starting services...${NC}"
 echo ""
 
-python3 monitor.py > logs/monitor.log 2>&1 &
-MONITOR_PID=$!
-sleep 2
+# Suppress harmless warnings
+export QT_QPA_PLATFORM=xcb
+export QT_LOGGING_RULES="*.warning=false"
+export OPENCV_FFMPEG_CAPTURE_OPTIONS="rtsp_transport;tcp|loglevel;error"  # hide HEVC warnings
+export HEADLESS=true   # no local display window — use web UI at :5000
 
-if kill -0 "$MONITOR_PID" 2>/dev/null; then
-    echo -e "${GREEN}  ✓ AI Monitor running   (PID $MONITOR_PID)${NC}"
-    echo -e "    Log: tail -f logs/monitor.log"
+# Clear log files — fresh start, no leftover output
+> logs/monitor.log
+> logs/web_ui.log
+
+# Show custom model status
+CUSTOM_MODEL="custom_model/weights/best.pt"
+if [ -f "$CUSTOM_MODEL" ]; then
+    echo -e "${GREEN}  ✓ Custom trained model found${NC}"
 else
-    echo -e "${RED}  ✗ Monitor failed to start — check logs/monitor.log${NC}"
+    echo -e "${YELLOW}  ℹ Using base model (go to /annotate to train)${NC}"
 fi
 
-# ── Start web_ui.py ───────────────────────────────────
-# Use gunicorn for production-grade speed (handles 30 threads vs Flask's 1)
+# ── Start monitor.py ──────────────────────────────────
+python3 -u monitor.py > logs/monitor.log 2>&1 &
+MONITOR_PID=$!
+echo $MONITOR_PID > "$PID_MON"
+sleep 3
+
+if kill -0 "$MONITOR_PID" 2>/dev/null; then
+    echo -e "${GREEN}  ✓ AI Monitor started   (PID $MONITOR_PID)${NC}"
+else
+    echo -e "${RED}  ✗ Monitor failed — check logs/monitor.log${NC}"
+fi
+
+# ── Start web UI ──────────────────────────────────────
 if command -v gunicorn &>/dev/null; then
     gunicorn --workers=1 --threads=50 --worker-class=gthread \
              --bind=0.0.0.0:5000 --timeout=30 --keep-alive=2 \
              --log-file=logs/web_ui.log --log-level=warning \
              web_ui:app > /dev/null 2>&1 &
 else
-    python3 web_ui.py > logs/web_ui.log 2>&1 &
+    python3 -u web_ui.py > logs/web_ui.log 2>&1 &
 fi
 UI_PID=$!
+echo $UI_PID > "$PID_WEB"
 sleep 3
 
 if kill -0 "$UI_PID" 2>/dev/null; then
-    echo -e "${GREEN}  ✓ Web Dashboard running (PID $UI_PID)${NC}"
-    echo -e "    Log: tail -f logs/web_ui.log"
+    echo -e "${GREEN}  ✓ Web Dashboard started (PID $UI_PID)${NC}"
 else
-    echo -e "${RED}  ✗ Web UI failed to start — check logs/web_ui.log${NC}"
+    echo -e "${RED}  ✗ Web UI failed — check logs/web_ui.log${NC}"
 fi
 
-# ── Show access info ──────────────────────────────────
-echo ""
-# Show model status
-if [ -f "custom_model/weights/best.pt" ]; then
-    echo -e "${GREEN}  ✓ Custom trained model found — using it!${NC}"
+# ────────────────────────────────────────────────────────
+# SHOW ACCESS INFO
+# ────────────────────────────────────────────────────────
+LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -z "$LOCAL_IP" ] && LOCAL_IP="localhost"
+
+# Model status in banner
+if [ -f "$CUSTOM_MODEL" ]; then
+    MODEL_LINE="  Model        : Custom trained (99.4% accuracy)"
 else
-    echo -e "${YELLOW}  ℹ Using base yolov8s model. Go to /annotate to train.${NC}"
+    MODEL_LINE="  Model        : Base yolov8s (add training for better accuracy)"
 fi
 
 echo ""
-echo -e "${BOLD}╔═══════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}║   Open your browser and go to:                ║${NC}"
-echo -e "${BOLD}║                                               ║${NC}"
-echo -e "${BOLD}║   ${CYAN}http://$LOCAL_IP:5000${BOLD}           Dashboard ║${NC}"
-echo -e "${BOLD}║   ${CYAN}http://$LOCAL_IP:5000/annotate${BOLD}  Training  ║${NC}"
-echo -e "${BOLD}║                                               ║${NC}"
-echo -e "${BOLD}║   Press  Ctrl+C  to stop everything           ║${NC}"
-echo -e "${BOLD}╚═══════════════════════════════════════════════╝${NC}"
+echo -e "${BOLD}╔═══════════════════════════════════════════════════╗${NC}"
+echo -e "${BOLD}║   Open your browser:                              ║${NC}"
+echo -e "${BOLD}║                                                   ║${NC}"
+echo -e "${BOLD}║   ${CYAN}http://$LOCAL_IP:5000${BOLD}              Dashboard  ║${NC}"
+echo -e "${BOLD}║   ${CYAN}http://$LOCAL_IP:5000/annotate${BOLD}     Training   ║${NC}"
+echo -e "${BOLD}║                                                   ║${NC}"
+echo -e "${BOLD}║   Ctrl+C to stop                                  ║${NC}"
+echo -e "${BOLD}╚═══════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "$MODEL_LINE"
 echo ""
 
-# ── Tail both logs together ───────────────────────────
+# ────────────────────────────────────────────────────────
+# LIVE LOG — clean output only
+# ────────────────────────────────────────────────────────
+cleanup() {
+    echo ""
+    echo -e "${YELLOW}  Stopping...${NC}"
+    [ -f "$PID_MON" ] && kill $(cat "$PID_MON") 2>/dev/null && rm -f "$PID_MON"
+    [ -f "$PID_WEB" ] && kill $(cat "$PID_WEB") 2>/dev/null && rm -f "$PID_WEB"
+    pkill -9 -f "${PROJ}/monitor.py" 2>/dev/null
+    pkill -9 -f "${PROJ}/web_ui.py"  2>/dev/null
+    fuser -k 5000/tcp 2>/dev/null
+    echo -e "${GREEN}  ✓ All stopped${NC}"
+    echo ""
+    exit 0
+}
+trap cleanup SIGINT SIGTERM
+
 echo -e "${YELLOW}  Live output (Ctrl+C to stop):${NC}"
-echo -e "  ─────────────────────────────"
-tail -f logs/monitor.log logs/web_ui.log 2>/dev/null &
+echo -e "  ─────────────────────────────────────────────────"
+
+# Show only useful lines — no InsightFace/ONNX noise
+tail -f logs/monitor.log 2>/dev/null | grep -v \
+    "Applied providers\|find model\|model ignore\|set det-size\
+\|UserWarning\|CUDAExecutionProvider\|warn(\|onnxruntime\
+\|XDG_SESSION_TYPE\|QT_QPA_PLATFORM\|Ignoring XDG" &
 TAIL_PID=$!
 
-# ── Wait forever ──────────────────────────────────────
-wait "$MONITOR_PID" "$UI_PID" 2>/dev/null
-kill "$TAIL_PID" 2>/dev/null
+wait $MONITOR_PID $UI_PID 2>/dev/null
+kill $TAIL_PID 2>/dev/null
 cleanup

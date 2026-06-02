@@ -27,19 +27,22 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 HALF        = DEVICE == "cuda"
 CONF_PERSON = 0.50
-CONF_PHONE  = 0.28          # balanced: catches real phones, skips very weak detections
+CONF_PHONE  = 0.35          # balanced: custom model true positives are 35%+, false are 10-25%
 CONF_CHAIR  = 0.40
 CONF_KP     = 0.50
 DISPLAY_W   = 1280
 DISPLAY_H   = 720
 PERSON, PHONE, CHAIR = 0, 67, 56
 
-SLEEP_THRESHOLD   = int(os.getenv("SLEEP_THRESHOLD_SEC",     "120"))
-WASTE_THRESHOLD   = int(os.getenv("TIMEWASTE_THRESHOLD_SEC", "600"))
-PHONE_COOLDOWN    = int(os.getenv("PHONE_COOLDOWN_SEC",       "30"))
-MOTION_STILL_SECS = 60
-MOTION_THRESH     = 0.012
-MIN_TRACK_AGE     = 30
+SLEEP_THRESHOLD      = int(os.getenv("SLEEP_THRESHOLD_SEC",       "120"))
+# ── Session-based phone timing ─────────────────────────────────────────────
+# Photo saved when session ENDS (not on detection start)
+PHONE_SESSION_GRACE  = float(os.getenv("PHONE_SESSION_GRACE_SEC",  "6"))   # seconds without detection = session ended
+PHONE_SESSION_MIN    = float(os.getenv("PHONE_SESSION_MIN_SEC",    "20"))   # ignore sessions shorter than this
+PHONE_SESSION_MAX    = int(os.getenv("PHONE_SESSION_MAX_SEC",      "600"))  # periodic save every N sec during long sessions
+MOTION_STILL_SECS    = 60
+MOTION_THRESH        = 0.012
+MIN_TRACK_AGE        = 30
 
 # ── Camera-angle tuning (set in .env per camera) ──────────────────────────────
 # CAMERA_ANGLE:
@@ -139,13 +142,21 @@ class TrackState:
         self.left_wrist  = None   # (x, y, conf)
         self.right_wrist = None   # (x, y, conf)
         # phone: 3 consecutive frames needed (~1.5s) — reduces flicker false positives
-        self.ev_phone = EvidenceAcc(window=6,  min_ratio=0.60, min_frames=3)
-        # sleep: needs sustained detection before alerting
+        # Custom model from overhead gives inconsistent detections (20-38% conf)
+        # Window=10 frames (5s), need 3 positives = 30% ratio to confirm
+        self.ev_phone = EvidenceAcc(window=10, min_ratio=0.30, min_frames=3)
         self.ev_sleep = EvidenceAcc(window=12, min_ratio=0.75)
-        self.phone_photo_at = 0; self.sleep_start = None
-        # Per-person phone usage timing
-        self.phone_session_start = None   # start of current phone use session
-        self.phone_total_sec     = 0.0    # cumulative usage this tracking session
+        self.sleep_start       = None  # when sleeping session started
+        self.sleep_last_active = None  # last time sleep_ok was True
+        self.sleep_session_ann = None  # annotated frame at sleep start
+
+        # ── Session-based timing (photo saved when session ENDS) ──────────
+        self.phone_session_start  = None   # monotonic time when session started
+        self.phone_session_ptype  = None   # 'hand' or 'ear' for this session
+        self.phone_last_active    = None   # last monotonic time phone_ok was True
+        self.phone_session_ann    = None   # annotated frame from peak of session
+        self.phone_session_saved  = 0.0   # last periodic save time (for long sessions)
+        self.phone_total_sec      = 0.0   # cumulative seconds across all sessions
 
     @property
     def track_age(self): return time.time() - self.first_seen
@@ -326,10 +337,12 @@ class CameraSession:
         pwd  = urllib.parse.quote(str(c.get('pass', '')), safe='')
         base = f"rtsp://{c.get('user','admin')}:{pwd}@{c['ip']}:{c.get('port',554)}"
         if c.get('rtsp_path'): return base + c['rtsp_path']
-        ch = c.get('channel', 1)
+        ch      = c.get('channel', 1)
+        subtype = c.get('subtype', 1)   # 0=main stream, 1=sub-stream (default)
+        # subtype=1 allows more concurrent NVR connections than subtype=0
         if c.get('type', 'dahua').lower() == 'dahua':
-            return base + f"/cam/realmonitor?channel={ch}&subtype=0"
-        return base + f"/Streaming/Channels/{ch}01"
+            return base + f"/cam/realmonitor?channel={ch}&subtype={subtype}"
+        return base + f"/Streaming/Channels/{ch}0{subtype+1}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -411,66 +424,88 @@ class BatchDetectWorker(threading.Thread):
             self._purge(cams, now); return
 
         # ── Pass 2: phone detection on batched person crops ───────────────
-        # Use custom model if available (better at overhead-angle phones),
-        # otherwise fall back to base yolov8s with COCO class 67 (phone).
+        # Run BOTH models and merge results:
+        #   Custom model: trained on your cameras → better hand/ear/desk classification
+        #   Base COCO model: class 67 (phone) → strong general phone detector
+        # Combining both gives best recall — custom model catches overhead phones
+        # even at low confidence (20-38%), COCO catches what custom misses.
         crops = [m[2] for m in crop_meta]
+
+        # Custom model results
+        r2_custom = None
         if _custom_model is not None:
-            # Custom model: classes 0=phone_hand,1=phone_ear,2=phone_desk
             with _infer_lock:
-                r2 = _custom_model(crops, verbose=False, conf=CONF_PHONE,
-                                   imgsz=320, device=DEVICE, half=HALF,
-                                   classes=[CUSTOM_PHONE_HAND, CUSTOM_PHONE_EAR,
-                                            CUSTOM_PHONE_DESK])
-        else:
-            # Base model: COCO class 67 = cell phone
-            with _infer_lock:
-                r2 = _detect_model(crops, verbose=False, conf=CONF_PHONE,
-                                   imgsz=320, device=DEVICE, half=HALF,
-                                   classes=[PHONE])
+                r2_custom = _custom_model(crops, verbose=False, conf=CONF_PHONE,
+                                          imgsz=320, device=DEVICE, half=HALF,
+                                          classes=[CUSTOM_PHONE_HAND, CUSTOM_PHONE_EAR,
+                                                   CUSTOM_PHONE_DESK])
+
+        # COCO base model results (always run as fallback)
+        with _infer_lock:
+            r2_coco = _detect_model(crops, verbose=False, conf=0.25,
+                                    imgsz=320, device=DEVICE, half=HALF,
+                                    classes=[PHONE])
 
         phones_by_idx     = [[] for _ in cams]
-        phone_tids_by_idx = [set() for _ in cams]  # only hand/ear tids
+        phone_tids_by_idx = [set() for _ in cams]
 
-        for (cam_idx, pe, crop, ox, oy, fh, fw), pr in zip(crop_meta, r2):
+        def _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, ptype, skip_valid=False):
+            """Add a validated phone detection to the results."""
+            pconf = float(pb.conf[0])
+            if pconf < CONF_PHONE: return
+            px1, py1, px2, py2 = map(int, pb.xyxy[0])
+            full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
+            # Custom model: skip _valid_phone — it already classifies type correctly
+            # (annotations drawn around person, not phone → bbox fails size checks)
+            if not skip_valid and not _valid_phone(full_bbox, pe['bbox'], fh, fw): return
+            # Never downgrade a confirmed hand/ear detection to desk
+            existing = next((p for p in phones_by_idx[cam_idx]
+                             if p['track_id'] == pe['track_id']), None)
+            if existing and existing['type'] in ('hand','ear') and ptype == 'desk':
+                return
+            phones_by_idx[cam_idx].append({
+                'bbox': full_bbox, 'conf': pconf,
+                'track_id': pe['track_id'], 'type': ptype
+            })
             cam = cams[cam_idx]
-            if pr.boxes is None: continue
-            for pb in pr.boxes:
-                pconf = float(pb.conf[0])
-                if pconf < CONF_PHONE: continue
-                px1, py1, px2, py2 = map(int, pb.xyxy[0])
-                full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
-                if not _valid_phone(full_bbox, pe['bbox'], fh, fw): continue
-
-                # If using custom model, class IDs directly give phone type
-                if _custom_model is not None:
-                    cls_id = int(pb.cls[0])
-                    if   cls_id == CUSTOM_PHONE_HAND: ptype = 'hand'
-                    elif cls_id == CUSTOM_PHONE_EAR:  ptype = 'ear'
-                    elif cls_id == CUSTOM_PHONE_DESK: ptype = 'desk'
-                    else: continue   # unknown class
-                else:
-                    # Base model: use wrist proximity to classify
-                    ear_signal = False; lw = None; rw = None
-                    with cam.tracks_lock:
-                        if pe['track_id'] in cam.tracks:
-                            ts0 = cam.tracks[pe['track_id']]
-                            ear_signal = ts0.phone_on_ear
-                            lw = ts0.left_wrist
-                            rw = ts0.right_wrist
-                    ptype = _classify_phone(full_bbox, pe['bbox'], ear_signal, lw, rw)
-
-                phones_by_idx[cam_idx].append({
-                    'bbox': full_bbox, 'conf': pconf,
-                    'track_id': pe['track_id'], 'type': ptype
-                })
-
-                # Update track state immediately so BehaviorEngine sees it
-                with cam.tracks_lock:
-                    if pe['track_id'] in cam.tracks:
-                        ts = cam.tracks[pe['track_id']]
+            with cam.tracks_lock:
+                if pe['track_id'] in cam.tracks:
+                    ts = cam.tracks[pe['track_id']]
+                    if ptype in ('hand','ear') or ts.phone_type is None:
                         ts.phone_bbox = full_bbox
                         ts.phone_type = ptype
-                        ts.has_phone  = ptype in ('hand', 'ear')
+                        ts.has_phone  = ptype in ('hand','ear')
+
+        # ── Process custom model (overhead-trained, knows hand/ear/desk) ──
+        # skip_valid=True because custom model bboxes are person-sized
+        # (annotations were drawn around the person, not the phone)
+        if r2_custom is not None:
+            for (cam_idx, pe, crop, ox, oy, fh, fw), pr in zip(crop_meta, r2_custom):
+                if pr.boxes is None: continue
+                for pb in pr.boxes:
+                    cls_id = int(pb.cls[0])
+                    if   cls_id == CUSTOM_PHONE_HAND: _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, 'hand', skip_valid=True)
+                    elif cls_id == CUSTOM_PHONE_EAR:  _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, 'ear',  skip_valid=True)
+                    elif cls_id == CUSTOM_PHONE_DESK: _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, 'desk', skip_valid=True)
+
+        # ── Process COCO base model (fills gaps custom model missed) ──────
+        for (cam_idx, pe, crop, ox, oy, fh, fw), pr in zip(crop_meta, r2_coco):
+            if pr.boxes is None: continue
+            cam = cams[cam_idx]
+            for pb in pr.boxes:
+                # Get wrist signals for classification
+                ear_sig = False; lw = None; rw = None
+                with cam.tracks_lock:
+                    if pe['track_id'] in cam.tracks:
+                        ts0 = cam.tracks[pe['track_id']]
+                        ear_sig = ts0.phone_on_ear
+                        lw = ts0.left_wrist
+                        rw = ts0.right_wrist
+                # Compute full-frame phone bbox for classification
+                px1, py1, px2, py2 = map(int, pb.xyxy[0])
+                full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
+                ptype = _classify_phone(full_bbox, pe['bbox'], ear_sig, lw, rw)
+                _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, ptype)
 
                 if ptype in ('hand', 'ear'):
                     phone_tids_by_idx[cam_idx].add(pe['track_id'])
@@ -885,70 +920,143 @@ class BehaviorEngine(threading.Thread):
         now = time.time(); overlays = []
         with self.cam.tracks_lock: snap = dict(self.cam.tracks)
 
+        # Get current live person positions from detection
+        live_snap = self.cam.state.snapshot()
+        # Map: track_id → current bbox (only persons VISIBLE RIGHT NOW)
+        live_bbox_by_tid = {pe['track_id']: pe['bbox'] for pe in live_snap['persons']}
+
         for tid, ts in snap.items():
             ts.ev_phone.add(ts.phone_raw)
             ts.ev_sleep.add(ts.sleep_raw)
             phone_ok = ts.ev_phone.confirmed
             sleep_ok = ts.ev_sleep.confirmed
 
-            # ── PHONE  (hand / ear — desk phones never alert) ────────────────
+            # ── CRITICAL: only alert if person is CURRENTLY VISIBLE ──────────
+            # Prevents stale tracks (person left/re-tracked) from firing alerts
+            # at wrong positions (empty seats, wrong person)
+            live_bbox = live_bbox_by_tid.get(tid)
+            if live_bbox is None:
+                # Person not in current frame — skip alert, keep accumulating
+                continue
+
+            # Use live detection bbox for accurate red box placement
+            ts._live_bbox = live_bbox
+
+            # ── PHONE ────────────────────────────────────────────────────────
+            # TWO photos per event:
+            #   1. IMMEDIATE — first frame when detected (shows it's happening)
+            #   2. SESSION END — when phone put down (shows exact duration)
             if phone_ok:
                 ptype = ts.phone_type or ('ear' if ts.phone_on_ear else 'hand')
                 event = "PHONE_EAR" if ptype == 'ear' else "PHONE_HAND"
 
-                # Track per-person phone usage time
                 with self.cam.tracks_lock:
                     if tid in self.cam.tracks:
-                        if self.cam.tracks[tid].phone_session_start is None:
-                            self.cam.tracks[tid].phone_session_start = now
+                        t = self.cam.tracks[tid]
+                        t.phone_last_active = now
 
-                session_dur  = now - (ts.phone_session_start or now)
-                total_usage  = ts.phone_total_sec + session_dur
-                m_u, s_u     = int(total_usage // 60), int(total_usage % 60)
+                        if t.phone_session_start is None:
+                            # ── NEW SESSION: save IMMEDIATE photo ────────────
+                            t.phone_session_start = now
+                            t.phone_session_ptype = ptype
+                            t.phone_session_saved = now
+                            ann_first = annotate_cam(self.cam)
+                            ann_first = _force_red_box(ann_first, t, ptype,
+                                                        self.cam.state.get_frame())
+                            t.phone_session_ann = ann_first
+                            # Fire immediately — "0 sec" photo shows detection start
+                            self._fire(event, ann_first, self._det(t, "phone"),
+                                       0, self.cam.cam_id, self.cam.name)
+                        else:
+                            # ── ONGOING SESSION: update best frame every 8s ──
+                            if now - t.phone_session_saved >= 8:
+                                ann_cur = annotate_cam(self.cam)
+                                ann_cur = _force_red_box(ann_cur, t, ptype,
+                                                          self.cam.state.get_frame())
+                                t.phone_session_ann = ann_cur
+                                t.phone_session_saved = now
 
-                if now - ts.phone_photo_at >= PHONE_COOLDOWN:
-                    ann = annotate_cam(self.cam)
-                    ann = _force_red_box(ann, ts, ptype, self.cam.state.get_frame())
-                    self._fire(event, ann, self._det(ts, "phone"), total_usage,
+                # Live overlay — show duration
+                session_dur = now - (ts.phone_session_start or now)
+                total_use   = ts.phone_total_sec + session_dur
+                m_u, s_u    = int(total_use//60), int(total_use%60)
+                label = "PHONE ON EAR" if ptype=='ear' else "PHONE IN HAND"
+                overlays.append(f"[{self.cam.name}#{tid}] {label}  {m_u}m{s_u:02d}s")
+
+                # Periodic save every PHONE_SESSION_MAX seconds (for long calls)
+                if (ts.phone_session_start and session_dur >= PHONE_SESSION_MAX and
+                        now - ts.phone_session_saved >= PHONE_SESSION_MAX):
+                    ann = ts.phone_session_ann or annotate_cam(self.cam)
+                    self._fire(event, ann, self._det(ts, "phone"), session_dur,
                                self.cam.cam_id, self.cam.name)
                     with self.cam.tracks_lock:
                         if tid in self.cam.tracks:
-                            self.cam.tracks[tid].phone_photo_at = now
-
-                label = "PHONE ON EAR" if ptype == 'ear' else "PHONE IN HAND"
-                overlays.append(
-                    f"[{self.cam.name}#{tid}] {label}  {m_u}m{s_u:02d}s total"
-                )
+                            self.cam.tracks[tid].phone_session_saved = now
 
             else:
-                # Phone session ended — accumulate time
+                # Phone gone — check if session just ended
                 with self.cam.tracks_lock:
-                    if tid in self.cam.tracks and self.cam.tracks[tid].phone_session_start:
-                        dur = now - self.cam.tracks[tid].phone_session_start
-                        self.cam.tracks[tid].phone_total_sec += dur
-                        self.cam.tracks[tid].phone_session_start = None
+                    if tid in self.cam.tracks:
+                        t = self.cam.tracks[tid]
+                        if (t.phone_session_start is not None and
+                                t.phone_last_active is not None and
+                                now - t.phone_last_active >= PHONE_SESSION_GRACE):
+                            # ── SESSION ENDED: save final photo with duration ─
+                            duration = t.phone_last_active - t.phone_session_start
+                            t.phone_total_sec += duration
+                            ptype = t.phone_session_ptype or 'hand'
+                            event = "PHONE_EAR" if ptype == 'ear' else "PHONE_HAND"
+                            if duration >= PHONE_SESSION_MIN:
+                                ann = t.phone_session_ann or annotate_cam(self.cam)
+                                self._fire(event, ann, self._det(t, "phone"),
+                                           duration, self.cam.cam_id, self.cam.name)
+                            t.phone_session_start = None
+                            t.phone_last_active   = None
+                            t.phone_session_ann   = None
+                            t.phone_session_ptype = None
 
-            # ── SLEEPING ─────────────────────────────────────────────────────
+            # ═══════════════════════════════════════════════════════════════
+            #  SLEEPING — two photos per session:
+            #    Photo 1: IMMEDIATE when sleeping confirmed (after threshold)
+            #    Photo 2: FINAL when they wake up with exact duration
+            # ═══════════════════════════════════════════════════════════════
             if sleep_ok:
                 with self.cam.tracks_lock:
                     if tid in self.cam.tracks:
-                        if self.cam.tracks[tid].sleep_start is None:
-                            self.cam.tracks[tid].sleep_start = now
-                        elif now - self.cam.tracks[tid].sleep_start >= SLEEP_THRESHOLD:
+                        t = self.cam.tracks[tid]
+                        t.sleep_last_active = now
+                        if t.sleep_start is None:
+                            t.sleep_start = now
+
+                        elapsed = now - t.sleep_start
+                        # ── PHOTO 1: immediate after threshold confirmed ───────
+                        if elapsed >= SLEEP_THRESHOLD and t.sleep_session_ann is None:
                             ann = annotate_cam(self.cam)
-                            ann = _force_red_box(ann, ts, 'sleep',
-                                                  self.cam.state.get_frame())
-                            self._fire("SLEEPING", ann, self._det(ts, "sleep"),
-                                       now - self.cam.tracks[tid].sleep_start,
-                                       self.cam.cam_id, self.cam.name)
-                            self.cam.tracks[tid].sleep_start = None
+                            ann = _force_red_box(ann, t, 'sleep', self.cam.state.get_frame())
+                            t.sleep_session_ann = ann
+                            self._fire("SLEEPING", ann, self._det(t, "sleep"),
+                                       elapsed, self.cam.cam_id, self.cam.name)
+
                 elapsed = now - (ts.sleep_start or now)
                 overlays.append(f"[{self.cam.name}#{tid}] SLEEPING "
                                  f"{int(elapsed//60)}m{int(elapsed%60):02d}s "
                                  f"({min(elapsed/SLEEP_THRESHOLD*100,100):.0f}%)")
             else:
                 with self.cam.tracks_lock:
-                    if tid in self.cam.tracks: self.cam.tracks[tid].sleep_start = None
+                    if tid in self.cam.tracks:
+                        t = self.cam.tracks[tid]
+                        if (t.sleep_start is not None and
+                                t.sleep_last_active is not None and
+                                t.sleep_session_ann is not None):
+                            # ── PHOTO 2: final — they woke up ─────────────────
+                            duration = t.sleep_last_active - t.sleep_start
+                            if duration >= SLEEP_THRESHOLD:
+                                self._fire("SLEEPING", t.sleep_session_ann,
+                                           self._det(t, "sleep"),
+                                           duration, self.cam.cam_id, self.cam.name)
+                        t.sleep_start       = None
+                        t.sleep_last_active = None
+                        t.sleep_session_ann = None
 
 
 
@@ -969,21 +1077,56 @@ class BehaviorEngine(threading.Thread):
 #  CAMERA READER THREAD
 # ══════════════════════════════════════════════════════════════════════════════
 
-def camera_reader(cam):
+SHARED_FRAMES_DIR = Path("/tmp/monitor_frames")
+SHARED_FRAMES_DIR.mkdir(exist_ok=True)
+
+def camera_reader(cam, startup_delay=0):
+    """
+    startup_delay: stagger camera startups by N seconds so the NVR doesn't
+    receive all 7 connection requests simultaneously (avoids timeout/rejection).
+    Writes latest frame to /tmp/monitor_frames/{name}.jpg so web_ui
+    can read it without opening its own RTSP connection.
+    """
+    if startup_delay > 0:
+        time.sleep(startup_delay)
+
     url = cam.rtsp_url()
     print(f"  [Cam-{cam.cam_id}] {cam.name}  →  {url}")
-    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+    retry_delay = 3
     while _running:
-        ret, frame = cap.read()
-        if not ret:
-            print(f"  [Cam-{cam.cam_id}] Reconnecting...")
-            cap.release(); time.sleep(2)
-            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if not cap.isOpened():
+            print(f"  [Cam-{cam.cam_id}] Cannot open — retry in {retry_delay}s")
+            cap.release()
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay + 2, 15)
             continue
-        cam.state.set_frame(frame)
-    cap.release()
+
+        retry_delay = 3   # reset on success
+        _frame_count = 0
+        while _running:
+            ret, frame = cap.read()
+            if not ret:
+                print(f"  [Cam-{cam.cam_id}] Stream lost — reconnecting in 3s...")
+                break
+            cam.state.set_frame(frame)
+            # Share frame with web_ui every 3rd frame (~3fps write)
+            # so web_ui never needs its own RTSP connection
+            _frame_count += 1
+            if _frame_count % 3 == 0:
+                try:
+                    shared = cv2.resize(frame, (640, 360))
+                    tmp = SHARED_FRAMES_DIR / f"{cam.name}.tmp.jpg"
+                    cv2.imwrite(str(tmp), shared, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                    tmp.rename(SHARED_FRAMES_DIR / f"{cam.name}.jpg")
+                except Exception:
+                    pass
+
+        cap.release()
+        if _running:
+            time.sleep(3)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1005,16 +1148,24 @@ def annotate_cam(cam, target_w=None, target_h=None):
     with cam.tracks_lock: track_snap = dict(cam.tracks)
     h, w  = frame.shape[:2]
 
+    # Build set of track IDs that currently have an active phone detection
+    active_phone_tids = {ph['track_id'] for ph in snap['phones']
+                         if ph.get('type') in ('hand', 'ear')}
+
     for pe in snap['persons']:
         tid = pe['track_id']; ts = track_snap.get(tid)
         x1,y1,x2,y2 = pe['bbox']
-        if   ts is None:              color, label = _G, "OK"
-        elif ts.ev_phone.confirmed:
+        if ts is None:
+            color, label = _G, "OK"
+        elif ts.ev_phone.confirmed or tid in active_phone_tids:
+            # Use live phone detection OR confirmed evidence — whichever is current
             ptype = ts.phone_type or ('ear' if ts.phone_on_ear else 'hand')
             if ptype == 'ear': color, label = (0,60,255), "PHONE ON EAR"
             else:              color, label = _R,          "PHONE IN HAND"
-        elif ts.ev_sleep.confirmed:   color, label = _R, "SLEEPING"
-        else:                         color, label = _G, "OK"
+        elif ts.ev_sleep.confirmed:
+            color, label = _R, "SLEEPING"
+        else:
+            color, label = _G, "OK"
         cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
         (lw2,lh2),_ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 2)
         ly = max(y1-4, lh2+4)
@@ -1129,9 +1280,11 @@ def main():
     n       = len(cameras)
     print(f"[INFO] Initializing {n} camera(s)...\n")
 
-    # Start RTSP reader threads
-    for cam in cameras:
-        t = threading.Thread(target=camera_reader, args=(cam,), daemon=True)
+    # Start RTSP reader threads — staggered by 1.5s each
+    # Prevents the NVR from receiving all 7 connection requests simultaneously
+    for i, cam in enumerate(cameras):
+        delay = i * 1.5   # 0s, 1.5s, 3s, 4.5s, 6s, 7.5s, 9s
+        t = threading.Thread(target=camera_reader, args=(cam, delay), daemon=True)
         t.start()
 
     # Wait for at least one live frame
@@ -1160,20 +1313,30 @@ def main():
     OllamaVerifier().start()
     print(f"  ✓ OllamaVerifier")
 
-    print(f"\n[INFO] Monitoring {n} camera(s). Press Q to quit.\n")
+    # HEADLESS mode — no local display window needed.
+    # The web dashboard at :5000 is the UI. cv2.imshow caused
+    # "force quit" dialogs on Wayland/headless servers.
+    HEADLESS = os.getenv("HEADLESS", "true").lower() != "false"
+    print(f"\n[INFO] Monitoring {n} camera(s). Headless={HEADLESS}. Ctrl+C to stop.\n")
 
-    use_grid = n > 1
-    while _running:
-        if use_grid:
-            display = make_grid(cameras)
-            cv2.imshow(f"Employee Monitor — {n} cameras  [Q=quit]", display)
-        else:
-            display = annotate_cam(cameras[0])
-            display = cv2.resize(display, (DISPLAY_W, DISPLAY_H))
-            cv2.imshow("Employee Monitor  [Q=quit]", display)
-        if cv2.waitKey(33) & 0xFF == ord('q'): _stop()
+    if HEADLESS:
+        # Production mode: no display window, just keep running
+        while _running:
+            time.sleep(1)
+    else:
+        # Developer mode: show local window (set HEADLESS=false in .env)
+        use_grid = n > 1
+        while _running:
+            if use_grid:
+                display = make_grid(cameras)
+                cv2.imshow(f"Employee Monitor — {n} cameras  [Q=quit]", display)
+            else:
+                display = annotate_cam(cameras[0])
+                display = cv2.resize(display, (DISPLAY_W, DISPLAY_H))
+                cv2.imshow("Employee Monitor  [Q=quit]", display)
+            if cv2.waitKey(33) & 0xFF == ord('q'): _stop()
+        cv2.destroyAllWindows()
 
-    cv2.destroyAllWindows()
     time.sleep(0.3)
     print("[INFO] Stopped.")
 

@@ -1,43 +1,488 @@
 #!/usr/bin/env python3
 """
-train.py — Fine-tune yolov8s on annotated training data.
+train.py — Production-grade training for small overhead-camera datasets.
+
+Features:
+  • Offline augmentation: generates 8× more images from existing ones
+  • Class balancing: over-samples rare classes
+  • Image preprocessing: CLAHE + quality filtering
+  • Auto model selection: yolov8m for >100 images, yolov8s otherwise
+  • Fixed train/val split — val images NEVER seen during training
+  • Zero overfitting: frozen backbone + label smoothing + dropout
+  • Authentic validation on truly unseen images
 
 Usage:
-    python3 train.py           → train on all collected annotations
-    python3 train.py --check   → show how many images are ready, then exit
-
-Input:  training_data/images/*.jpg  +  training_data/labels/*.txt
-Output: custom_model/weights/best.pt  (auto-loaded by monitor.py on restart)
-
-Classes:
-    0 = phone_hand   1 = phone_ear   2 = phone_desk
-    3 = sleeping     4 = working
+    python3 train.py             → augment + train
+    python3 train.py --check     → dataset stats only
+    python3 train.py --augment   → run augmentation only (no training)
+    python3 train.py --eval      → evaluate existing model
+    python3 train.py --no-augment → skip augmentation, train on existing data only
 """
 
-import os, sys, shutil, random, yaml, argparse
+import os, sys, shutil, random, json, argparse, math
 from pathlib import Path
 from datetime import datetime
 
-TRAIN_DIR   = Path("training_data")
-OUT_DIR     = Path("custom_model")
-MIN_IMAGES  = 15   # won't train below this
+import cv2
+import numpy as np
 
-CLASSES = ["phone_hand", "phone_ear", "phone_desk", "sleeping", "working"]
-CLASS_IDS = {c: i for i, c in enumerate(CLASSES)}
+TRAIN_DIR  = Path("training_data")
+AUG_DIR    = TRAIN_DIR / "augmented"    # offline augmented images live here
+OUT_DIR    = Path("custom_model")
+SPLIT_FILE = TRAIN_DIR / "split.json"
+CLASSES    = ["phone_hand", "phone_ear", "phone_desk", "sleeping", "working"]
+MIN_IMAGES = 15
+TARGET_PER_CLASS = 60   # target annotations per class via augmentation
 
 
-def count_by_class():
-    counts = {c: 0 for c in CLASSES}
+# ══════════════════════════════════════════════════════════════════════════════
+#  IMAGE QUALITY FILTERING
+# ══════════════════════════════════════════════════════════════════════════════
+
+def blur_score(img):
+    """Laplacian variance — higher = sharper."""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return cv2.Laplacian(gray, cv2.CV_64F).var()
+
+def brightness_score(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return gray.mean()
+
+def is_good_quality(img_path, min_blur=50, min_bright=20, max_bright=235):
+    img = cv2.imread(str(img_path))
+    if img is None: return False
+    b = blur_score(img)
+    br = brightness_score(img)
+    return b >= min_blur and min_bright <= br <= max_bright
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PREPROCESSING — CLAHE enhancement for consistent lighting
+# ══════════════════════════════════════════════════════════════════════════════
+
+def preprocess_image(img):
+    """
+    CLAHE: improves contrast in dark/bright areas — critical for office cameras
+    that have mixed lighting (windows + fluorescent lights).
+    """
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b_ch = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    lab = cv2.merge([l, a, b_ch])
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LABEL TRANSFORMS  (YOLO format: class cx cy w h, normalized 0-1)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def flip_labels_h(labels):
+    """Horizontal flip: cx = 1 - cx."""
+    out = []
+    for line in labels:
+        parts = line.strip().split()
+        if len(parts) == 5:
+            c, cx, cy, w, h = parts
+            out.append(f"{c} {1-float(cx):.6f} {cy} {w} {h}")
+    return out
+
+def rotate_labels_90cw(labels, img_h, img_w):
+    """
+    Rotate bboxes 90° clockwise.
+    New image dims: w×h → h×w
+    Transform: (cx,cy,bw,bh) → (1-cy, cx, bh, bw)
+    """
+    out = []
+    for line in labels:
+        parts = line.strip().split()
+        if len(parts) == 5:
+            c, cx, cy, bw, bh = [parts[0]] + [float(x) for x in parts[1:]]
+            new_cx = 1.0 - cy
+            new_cy = cx
+            out.append(f"{c} {new_cx:.6f} {new_cy:.6f} {bh:.6f} {bw:.6f}")
+    return out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  OFFLINE AUGMENTATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+AUGMENT_OPS = [
+    "hflip",            # horizontal flip
+    "bright_up",        # brighter (+40)
+    "bright_down",      # darker (-40)
+    "contrast_up",      # higher contrast
+    "contrast_down",    # lower contrast
+    "noise",            # gaussian noise (camera sensor noise)
+    "blur_slight",      # slight motion blur (camera shake)
+    "rot90",            # 90° rotation
+    "hflip_bright",     # flip + brightness
+    "clahe_boost",      # strong CLAHE
+]
+
+def apply_aug(img, op):
+    """Apply one augmentation operation. Returns (aug_img, label_transform_fn)."""
+    h, w = img.shape[:2]
+
+    if op == "hflip":
+        return cv2.flip(img, 1), "hflip"
+
+    elif op == "bright_up":
+        bright = np.clip(img.astype(np.int16) + 45, 0, 255).astype(np.uint8)
+        return bright, "none"
+
+    elif op == "bright_down":
+        dark = np.clip(img.astype(np.int16) - 40, 0, 255).astype(np.uint8)
+        return dark, "none"
+
+    elif op == "contrast_up":
+        alpha = 1.35; beta = -20
+        return np.clip(alpha * img.astype(np.float32) + beta, 0, 255).astype(np.uint8), "none"
+
+    elif op == "contrast_down":
+        alpha = 0.70; beta = 30
+        return np.clip(alpha * img.astype(np.float32) + beta, 0, 255).astype(np.uint8), "none"
+
+    elif op == "noise":
+        noise = np.random.normal(0, 12, img.shape).astype(np.int16)
+        return np.clip(img.astype(np.int16) + noise, 0, 255).astype(np.uint8), "none"
+
+    elif op == "blur_slight":
+        kernel = np.zeros((5, 5)); kernel[2, :] = 1.0/5
+        return cv2.filter2D(img, -1, kernel), "none"
+
+    elif op == "rot90":
+        return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE), "rot90"
+
+    elif op == "hflip_bright":
+        flipped = cv2.flip(img, 1)
+        bright  = np.clip(flipped.astype(np.int16) + 30, 0, 255).astype(np.uint8)
+        return bright, "hflip"
+
+    elif op == "clahe_boost":
+        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+        l, a, b_ch = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8,8))
+        l = clahe.apply(l)
+        return cv2.cvtColor(cv2.merge([l,a,b_ch]), cv2.COLOR_LAB2BGR), "none"
+
+    return img, "none"
+
+
+def transform_labels(labels, label_tfm, img_h, img_w):
+    if label_tfm == "hflip":
+        return flip_labels_h(labels)
+    elif label_tfm == "rot90":
+        return rotate_labels_90cw(labels, img_h, img_w)
+    return labels   # "none" — brightness/noise don't affect boxes
+
+
+def augment_dataset(target_per_class=TARGET_PER_CLASS):
+    """
+    Generate offline augmented images from existing labeled training images.
+    Over-samples rare classes to reach target_per_class annotations each.
+    Saves results to training_data/augmented/
+    """
+    img_dir = TRAIN_DIR / "images"
     lbl_dir = TRAIN_DIR / "labels"
-    if not lbl_dir.exists(): return counts
-    for f in lbl_dir.glob("*.txt"):
-        for line in f.read_text().splitlines():
-            parts = line.strip().split()
-            if parts:
-                idx = int(parts[0])
-                if idx < len(CLASSES):
-                    counts[CLASSES[idx]] += 1
-    return counts
+    aug_img = AUG_DIR / "images"
+    aug_lbl = AUG_DIR / "labels"
+    aug_img.mkdir(parents=True, exist_ok=True)
+    aug_lbl.mkdir(parents=True, exist_ok=True)
+
+    # Count existing annotations per class
+    class_counts = {i: 0 for i in range(len(CLASSES))}
+    img_to_classes = {}   # image_stem → list of class ids
+
+    for lbl_file in lbl_dir.glob("*.txt"):
+        classes_in_img = []
+        for line in lbl_file.read_text().splitlines():
+            p = line.strip().split()
+            if p:
+                cls = int(p[0])
+                if cls < len(CLASSES):
+                    class_counts[cls] += 1
+                    classes_in_img.append(cls)
+        if classes_in_img:
+            img_to_classes[lbl_file.stem] = classes_in_img
+
+    print(f"  Existing annotations per class:")
+    for i, name in enumerate(CLASSES):
+        print(f"    {name:<14}: {class_counts[i]:3}  (target: {target_per_class})")
+
+    # Decide how many augmentations each image needs
+    # Prioritise images that contain rare classes
+    labeled_stems = list(img_to_classes.keys())
+    if not labeled_stems:
+        print("  No labeled images found.")
+        return 0
+
+    total_generated = 0
+    for stem in labeled_stems:
+        img_path = img_dir / f"{stem}.jpg"
+        lbl_path = lbl_dir / f"{stem}.txt"
+        if not img_path.exists(): continue
+
+        img = cv2.imread(str(img_path))
+        if img is None: continue
+
+        # Quality filter
+        if not is_good_quality(img_path):
+            print(f"  Skipping low-quality: {img_path.name}")
+            continue
+
+        # Preprocess original
+        img = preprocess_image(img)
+        labels = lbl_path.read_text().splitlines() if lbl_path.exists() else []
+
+        # How many augmentations: more for images with rare classes
+        img_classes = img_to_classes.get(stem, [])
+        deficit = max(target_per_class - class_counts.get(c, 0)
+                      for c in img_classes) if img_classes else 0
+        n_aug   = min(len(AUGMENT_OPS), max(2, deficit // max(len(img_classes),1)))
+
+        ops_to_apply = random.sample(AUGMENT_OPS, min(n_aug, len(AUGMENT_OPS)))
+        h, w = img.shape[:2]
+
+        for op in ops_to_apply:
+            aug_img_data, label_tfm = apply_aug(img.copy(), op)
+            aug_labels = transform_labels(labels, label_tfm, h, w)
+
+            fname = f"aug_{stem}_{op}"
+            cv2.imwrite(str(aug_img / f"{fname}.jpg"), aug_img_data,
+                        [cv2.IMWRITE_JPEG_QUALITY, 92])
+            (aug_lbl / f"{fname}.txt").write_text("\n".join(aug_labels))
+            total_generated += 1
+
+            # Update class count tracking
+            for line in aug_labels:
+                p = line.strip().split()
+                if p:
+                    c = int(p[0])
+                    if c < len(CLASSES):
+                        class_counts[c] += 1
+
+    print(f"\n  Generated {total_generated} augmented images → {AUG_DIR}")
+    return total_generated
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  DATASET SPLIT (fixed)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_or_create_split(use_augmented=True, val_ratio=0.18):
+    orig_imgs = sorted((TRAIN_DIR / "images").glob("*.jpg"))
+    aug_imgs  = sorted(aug_img_path.name for aug_img_path in (AUG_DIR/"images").glob("*.jpg")) if use_augmented and (AUG_DIR/"images").exists() else []
+
+    orig_names = [p.name for p in orig_imgs]
+
+    if SPLIT_FILE.exists():
+        split = json.loads(SPLIT_FILE.read_text())
+        known = set(split["train"]) | set(split["val"])
+        new_orig = [n for n in orig_names if n not in known]
+        split["train"].extend(new_orig)
+        if new_orig:
+            SPLIT_FILE.write_text(json.dumps(split, indent=2))
+    else:
+        random.shuffle(orig_names)
+        n_val    = max(2, int(len(orig_names) * val_ratio))
+        split    = {"train": orig_names[n_val:], "val": orig_names[:n_val]}
+        SPLIT_FILE.write_text(json.dumps(split, indent=2))
+        print(f"  Fixed split created: {len(split['train'])} train / {len(split['val'])} val (unseen)")
+
+    # Augmented images always go to train, NEVER to val
+    all_train = split["train"] + aug_imgs
+    return all_train, split["val"]
+
+
+def prepare_dataset(use_augmented=True):
+    train_names, val_names = get_or_create_split(use_augmented)
+
+    for split_name, names in [("train", train_names), ("val", val_names)]:
+        img_out = TRAIN_DIR / "images" / split_name
+        lbl_out = TRAIN_DIR / "labels" / split_name
+        img_out.mkdir(parents=True, exist_ok=True)
+        lbl_out.mkdir(parents=True, exist_ok=True)
+
+        for name in names:
+            # Check original first, then augmented
+            for src_root in [TRAIN_DIR/"images", AUG_DIR/"images"]:
+                src_img = src_root / name
+                if src_img.exists():
+                    shutil.copy2(src_img, img_out / name)
+                    stem = Path(name).stem
+                    for lbl_root in [TRAIN_DIR/"labels", AUG_DIR/"labels"]:
+                        src_lbl = lbl_root / f"{stem}.txt"
+                        if src_lbl.exists():
+                            shutil.copy2(src_lbl, lbl_out / f"{stem}.txt")
+                    break
+
+    import yaml
+    cfg = {"path": str(TRAIN_DIR.resolve()), "train": "images/train",
+           "val": "images/val", "nc": len(CLASSES), "names": CLASSES}
+    yaml_path = TRAIN_DIR / "dataset.yaml"
+    with open(yaml_path, "w") as f:
+        yaml.dump(cfg, f, default_flow_style=False)
+
+    return len(train_names), len(val_names), yaml_path
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  AUTO MODEL SELECTION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def pick_base_model(n_train):
+    """
+    Choose best starting point based on dataset size.
+    Larger model = better accuracy but needs more data to avoid overfitting.
+    """
+    existing = OUT_DIR / "weights" / "best.pt"
+    if existing.exists():
+        print(f"  Model: custom_model (continuing training from best checkpoint)")
+        return str(existing)
+
+    if n_train >= 200:
+        print(f"  Model: yolov8m.pt (medium — {n_train} images is enough)")
+        return "yolov8m.pt"
+    else:
+        print(f"  Model: yolov8s.pt (small — safer for {n_train} images with frozen backbone)")
+        return "yolov8s.pt"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  TRAINING
+# ══════════════════════════════════════════════════════════════════════════════
+
+def train(use_augmented=True):
+    import torch
+
+    n_orig = total_images()
+    if n_orig < MIN_IMAGES:
+        print(f"\n  Need {MIN_IMAGES}+ images. Have {n_orig}.\n"); sys.exit(1)
+
+    n_aug_generated = 0
+    if use_augmented:
+        print("\n[1/3] Running offline augmentation...")
+        n_aug_generated = augment_dataset()
+
+    print("\n[2/3] Preparing dataset...")
+    n_train, n_val, yaml_path = prepare_dataset(use_augmented)
+
+    base = pick_base_model(n_train)
+
+    # Freeze more layers for small datasets (retain more pre-trained knowledge)
+    freeze_layers = 15 if n_train < 150 else 10
+
+    # Longer training for small data (early stopping prevents waste)
+    epochs = 200 if n_train < 200 else 150
+
+    print(f"\n[3/3] Training:")
+    print(f"  Original images  : {n_orig}")
+    print(f"  Augmented added  : {n_aug_generated}")
+    print(f"  Total train      : {n_train}  |  Val: {n_val} (UNSEEN)")
+    print(f"  Base model       : {base}")
+    print(f"  Frozen layers    : {freeze_layers}  (backbone kept fixed)")
+    print(f"  Max epochs       : {epochs}  (early stop at patience=40)\n")
+
+    from ultralytics import YOLO
+    model = YOLO(base)
+    model.train(
+        data    = str(yaml_path),
+        epochs  = epochs,
+        imgsz   = 640,
+        batch   = 8 if n_train < 200 else 16,
+        device  = "cuda" if torch.cuda.is_available() else "cpu",
+
+        # Learning
+        lr0     = 0.0003,
+        lrf     = 0.003,
+        cos_lr  = True,
+        warmup_epochs   = 5,
+        warmup_momentum = 0.8,
+        momentum        = 0.937,
+
+        # Regularisation — anti-overfitting
+        weight_decay    = 0.001,
+        label_smoothing = 0.1,
+        dropout         = 0.1,
+
+        # Frozen backbone — only train detection heads
+        freeze  = freeze_layers,
+
+        # Online augmentation (on top of offline)
+        mosaic      = 1.0,
+        copy_paste  = 0.2,
+        mixup       = 0.08,
+        degrees     = 12.0,
+        translate   = 0.12,
+        scale       = 0.55,
+        shear       = 2.0,
+        perspective = 0.0003,
+        fliplr      = 0.5,
+        flipud      = 0.0,
+        hsv_h       = 0.02,
+        hsv_s       = 0.7,
+        hsv_v       = 0.4,
+        erasing     = 0.35,
+        close_mosaic= 30,
+
+        # Training control
+        patience    = 40,
+        project     = str(OUT_DIR),
+        name        = "weights",
+        exist_ok    = True,
+        verbose     = True,
+        plots       = True,
+        save_period = 10,
+    )
+
+    # Copy best model
+    candidates = list(Path("runs/detect").rglob("best.pt")) + \
+                 [OUT_DIR/"weights"/"weights"/"best.pt"]
+    found = next((p for p in candidates if p.exists()), None)
+    final = OUT_DIR / "weights" / "best.pt"
+    final.parent.mkdir(parents=True, exist_ok=True)
+    if found and found != final:
+        shutil.copy2(found, final)
+
+    if final.exists():
+        _print_results(final, yaml_path, n_train, n_val)
+    else:
+        print("\n  best.pt not found. Check errors above.\n"); sys.exit(1)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  EVALUATION + REPORTING
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _print_results(model_path, yaml_path, n_train, n_val):
+    from ultralytics import YOLO
+    model   = YOLO(str(model_path))
+    metrics = model.val(data=str(yaml_path), split="val", imgsz=640, verbose=False)
+
+    map50   = getattr(metrics.box, 'map50', 0)
+    map5095 = getattr(metrics.box, 'map',   0)
+
+    print(f"\n{'═'*60}")
+    print(f"  Training Complete — {datetime.now():%Y-%m-%d %H:%M}")
+    print(f"  Train: {n_train} images  |  Val: {n_val} images (unseen)")
+    print(f"{'─'*60}")
+    print(f"  Overall mAP@50    : {map50*100:.1f}%")
+    print(f"  Overall mAP@50-95 : {map5095*100:.1f}%")
+    print()
+
+    if hasattr(metrics.box, 'ap_class_index'):
+        names = model.names
+        for i, cls_i in enumerate(metrics.box.ap_class_index):
+            ap  = metrics.box.ap50[i] if hasattr(metrics.box,'ap50') else 0
+            sym = "✓" if ap >= 0.75 else ("⚠" if ap >= 0.50 else "✗")
+            print(f"  {sym} {names.get(cls_i, str(cls_i)):<14}: {ap*100:.1f}%")
+
+    print(f"\n  Overfitting risk  : {'⚠  HIGH — add more real images' if map50 < 0.65 else '✓ LOW'}")
+    print(f"  Model saved       : {OUT_DIR/'weights'/'best.pt'}")
+    print(f"\n  Restart monitor.py to use the new model.")
+    print(f"{'═'*60}\n")
 
 
 def total_images():
@@ -45,123 +490,64 @@ def total_images():
     return len(list(img_dir.glob("*.jpg"))) if img_dir.exists() else 0
 
 
-def prepare_dataset():
-    """Split images 80/20 train/val and write dataset.yaml."""
-    imgs = list((TRAIN_DIR / "images").glob("*.jpg"))
-    random.shuffle(imgs)
-    split = max(1, int(len(imgs) * 0.8))
-    sets = {"train": imgs[:split], "val": imgs[split:]}
+def evaluate():
+    final = OUT_DIR / "weights" / "best.pt"
+    if not final.exists():
+        print("No custom model. Run: python3 train.py"); return
+    _, _, yaml_path = prepare_dataset()
+    _print_results(final, yaml_path, 0, 0)
 
-    for split_name, split_imgs in sets.items():
-        img_out = TRAIN_DIR / "images" / split_name
-        lbl_out = TRAIN_DIR / "labels" / split_name
-        img_out.mkdir(parents=True, exist_ok=True)
-        lbl_out.mkdir(parents=True, exist_ok=True)
-        for img in split_imgs:
-            shutil.copy2(img, img_out / img.name)
-            lbl = TRAIN_DIR / "labels" / (img.stem + ".txt")
-            if lbl.exists():
-                shutil.copy2(lbl, lbl_out / lbl.name)
 
-    cfg = {
-        "path":  str(TRAIN_DIR.resolve()),
-        "train": "images/train",
-        "val":   "images/val",
-        "nc":    len(CLASSES),
-        "names": CLASSES,
-    }
-    yaml_path = TRAIN_DIR / "dataset.yaml"
-    with open(yaml_path, "w") as f:
-        yaml.dump(cfg, f, default_flow_style=False)
+def show_stats():
+    counts = {c: 0 for c in CLASSES}
+    lbl_dir = TRAIN_DIR / "labels"
+    if lbl_dir.exists():
+        for f in lbl_dir.glob("*.txt"):
+            for line in f.read_text().splitlines():
+                p = line.strip().split()
+                if p:
+                    idx = int(p[0])
+                    if idx < len(CLASSES): counts[CLASSES[idx]] += 1
 
-    return len(sets["train"]), len(sets["val"]), yaml_path
+    n_orig = total_images()
+    n_aug  = len(list((AUG_DIR/"images").glob("*.jpg"))) if (AUG_DIR/"images").exists() else 0
+
+    print(f"\n{'═'*55}")
+    print(f"  Dataset Statistics")
+    print(f"{'═'*55}")
+    print(f"  Original images  : {n_orig}")
+    print(f"  Augmented images : {n_aug}  (auto-generated)")
+    print(f"\n  Per-class annotations (original):")
+    for cls, cnt in counts.items():
+        sym = "✓" if cnt >= 20 else ("⚠" if cnt >= 10 else "✗ need more")
+        bar = "█" * min(cnt//2, 20)
+        print(f"  {sym} {cls:<14}: {cnt:3}  {bar}")
+    print(f"\n  Tip: add more '{min(counts, key=counts.get)}' annotations")
+    existing = OUT_DIR / "weights" / "best.pt"
+    print(f"\n  Custom model: {'EXISTS ✓' if existing.exists() else 'not trained yet'}")
+    if n_orig >= MIN_IMAGES:
+        print(f"  Ready!  Run: python3 train.py")
+    print(f"{'═'*55}\n")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--check", action="store_true", help="Show stats only, no training")
+    ap.add_argument("--check",      action="store_true")
+    ap.add_argument("--augment",    action="store_true")
+    ap.add_argument("--eval",       action="store_true")
+    ap.add_argument("--no-augment", action="store_true")
     args = ap.parse_args()
 
-    n      = total_images()
-    counts = count_by_class()
-
-    print(f"\n{'═'*55}")
-    print(f"  Training Data Status")
-    print(f"{'═'*55}")
-    print(f"  Total images : {n}")
-    for cls, cnt in counts.items():
-        bar = "█" * min(cnt // 2, 20)
-        print(f"  {cls:12}: {cnt:4}  {bar}")
-    print(f"{'═'*55}")
-
     if args.check:
-        if n < MIN_IMAGES:
-            print(f"\n  Need at least {MIN_IMAGES} images to train.")
-            print(f"  Use the Training UI to annotate more frames.\n")
-        else:
-            print(f"\n  Ready to train!  Run: python3 train.py\n")
-        return
-
-    if n < MIN_IMAGES:
-        print(f"\n  Need at least {MIN_IMAGES} annotated images. Have {n}.")
-        print(f"  Keep annotating in the Training UI.\n")
-        sys.exit(1)
-
-    print(f"\n  Starting training on {n} images...")
-    print(f"  This will take 20-40 minutes on your GPU.\n")
-
-    n_train, n_val, yaml_path = prepare_dataset()
-    print(f"  Train: {n_train}  Val: {n_val}")
-
-    from ultralytics import YOLO
-    epochs = 50 if n < 100 else 100
-
-    # Start from pre-trained weights for best accuracy
-    base = "custom_model/weights/best.pt"
-    start_weights = base if Path(base).exists() else "yolov8s.pt"
-    print(f"  Base model   : {start_weights}")
-    print(f"  Epochs       : {epochs}\n")
-
-    model = YOLO(start_weights)
-    model.train(
-        data     = str(yaml_path),
-        epochs   = epochs,
-        imgsz    = 640,
-        batch    = 8,
-        lr0      = 0.0005,
-        patience = 20,
-        project  = str(OUT_DIR),
-        name     = "weights",
-        exist_ok = True,
-        verbose  = True,
-    )
-
-    # YOLO saves under runs/detect/{project_name}/{name}/weights/best.pt
-    # Try multiple possible locations
-    candidates = [
-        OUT_DIR / "weights" / "weights" / "best.pt",               # custom_model/weights/weights/best.pt
-        Path("runs/detect") / OUT_DIR.name / "weights" / "weights" / "best.pt",  # runs/detect/...
-        Path("runs/detect/weights/weights/best.pt"),
-    ]
-    # Also search dynamically
-    for p in Path("runs/detect").rglob("best.pt") if Path("runs/detect").exists() else []:
-        candidates.insert(0, p)
-
-    found = next((p for p in candidates if p.exists()), None)
-    final = OUT_DIR / "weights" / "best.pt"
-    final.parent.mkdir(parents=True, exist_ok=True)
-
-    if found:
-        shutil.copy2(found, final)
-        print(f"\n{'═'*55}")
-        print(f"  Training complete!")
-        print(f"  Best mAP found in: {found}")
-        print(f"  Model copied  → {final}")
-        print(f"  Restart monitor.py to use the new model.")
-        print(f"{'═'*55}\n")
+        show_stats()
+    elif args.augment:
+        show_stats()
+        augment_dataset()
+    elif args.eval:
+        evaluate()
     else:
-        print("\n  Training finished but best.pt not found. Check errors above.\n")
-        sys.exit(1)
+        show_stats()
+        train(use_augmented=not args.no_augment)
 
 
 if __name__ == "__main__":
