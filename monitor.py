@@ -33,6 +33,12 @@ DISPLAY_W   = 1280
 DISPLAY_H   = 720
 PERSON, PHONE, CHAIR = 0, 67, 56
 
+# Custom model class IDs (best.pt trained on office cameras)
+CUSTOM_PHONE_HAND = 0
+CUSTOM_PHONE_EAR  = 1
+CUSTOM_PHONE_DESK = 2
+CUSTOM_SLEEPING   = 3
+
 SLEEP_THRESHOLD   = int(os.getenv("SLEEP_THRESHOLD_SEC",     "120"))
 WASTE_THRESHOLD   = int(os.getenv("TIMEWASTE_THRESHOLD_SEC", "600"))
 PHONE_COOLDOWN    = int(os.getenv("PHONE_COOLDOWN_SEC",       "30"))
@@ -60,15 +66,20 @@ signal.signal(signal.SIGTERM, _stop)
 
 # ── Global GPU models (loaded once, shared across all cameras) ────────────────
 _detect_model = None   # yolov8s.pt — person + phone + chair
+_custom_model = None   # best.pt — custom phone/sleep classifier
 _pose_model   = None   # yolov8n-pose.pt
 _infer_lock   = threading.Lock()  # serialize GPU calls
 
 def _load_models():
-    global _detect_model, _pose_model
+    global _detect_model, _custom_model, _pose_model
     dummy = np.zeros((416, 416, 3), dtype="uint8")
     print(f"  [Models] yolov8s.pt → {DEVICE}  fp16={HALF}")
     _detect_model = YOLO("yolov8s.pt")
     _detect_model([dummy], verbose=False, device=DEVICE, imgsz=416, half=HALF)
+    print(f"  [Models] custom_model/weights/best.pt → {DEVICE}  (phone/sleep classifier)")
+    _custom_model = YOLO("custom_model/weights/best.pt")
+    _custom_model([dummy], verbose=False, device=DEVICE, imgsz=320, half=HALF)
+    print(f"  [Models] *** Custom model ACTIVE — classes: phone_hand/ear/desk/sleeping ***")
     print(f"  [Models] yolov8n-pose.pt → {DEVICE}")
     _pose_model = YOLO("yolov8n-pose.pt")
     _pose_model([dummy], verbose=False, device=DEVICE, imgsz=416, half=HALF)
@@ -377,21 +388,87 @@ class BatchDetectWorker(threading.Thread):
         if not crop_meta:
             self._purge(cams, now); return
 
-        # ── Pass 2: phone detection on batched person crops ───────────────
-        # Crops are zoomed-in person regions → phone appears 4× larger than
-        # it would in the full frame, dramatically improving recall.
+        # ── Pass 2: run custom model + COCO model on person crops ────────
+        # Custom model (best.pt): trained on office cameras → knows hand/ear/desk/sleeping
+        # COCO model: fallback phone detector for anything custom model misses
         crops = [m[2] for m in crop_meta]
+
+        r2_custom = None
+        if _custom_model is not None:
+            with _infer_lock:
+                r2_custom = _custom_model(crops, verbose=False, conf=CONF_PHONE,
+                                          imgsz=320, device=DEVICE, half=HALF,
+                                          classes=[CUSTOM_PHONE_HAND, CUSTOM_PHONE_EAR,
+                                                   CUSTOM_PHONE_DESK])
+
         with _infer_lock:
-            r2 = _detect_model(crops, verbose=False, conf=CONF_PHONE,
-                               imgsz=320, device=DEVICE, half=HALF,
-                               classes=[PHONE])
+            r2_coco = _detect_model(crops, verbose=False, conf=CONF_PHONE,
+                                    imgsz=320, device=DEVICE, half=HALF,
+                                    classes=[PHONE])
 
         phones_by_idx     = [[] for _ in cams]
-        phone_tids_by_idx = [set() for _ in cams]  # only hand/ear tids
+        phone_tids_by_idx = [set() for _ in cams]
+        # track which tids were handled by custom model (skip COCO for them)
+        custom_handled    = [set() for _ in cams]
 
-        for (cam_idx, pe, crop, ox, oy, fh, fw), pr in zip(crop_meta, r2):
-            cam = cams[cam_idx]
+        # ── Process custom model results (primary) ────────────────────────
+        # Custom model bboxes cover the person crop area, not just the phone —
+        # skip _valid_phone size checks; trust the class label directly.
+        if r2_custom is not None:
+            for (cam_idx, pe, crop, ox, oy, fh, fw), pr in zip(crop_meta, r2_custom):
+                cam = cams[cam_idx]
+                if pr.boxes is None: continue
+                best_conf = 0.0; best_cls = None; best_full_bbox = None
+                for pb in pr.boxes:
+                    pconf = float(pb.conf[0])
+                    cls_id = int(pb.cls[0])
+                    if pconf > best_conf:
+                        best_conf = pconf; best_cls = cls_id
+                        px1, py1, px2, py2 = map(int, pb.xyxy[0])
+                        best_full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
+
+                if best_cls is None: continue
+                tid = pe['track_id']
+                custom_handled[cam_idx].add(tid)
+
+                if best_cls == CUSTOM_PHONE_HAND:
+                    ptype = 'hand'
+                elif best_cls == CUSTOM_PHONE_EAR:
+                    ptype = 'ear'
+                elif best_cls == CUSTOM_PHONE_DESK:
+                    ptype = 'desk'
+                else:
+                    continue
+
+                phones_by_idx[cam_idx].append({
+                    'bbox': best_full_bbox, 'conf': best_conf,
+                    'track_id': tid, 'type': ptype
+                })
+                with cam.tracks_lock:
+                    if tid in cam.tracks:
+                        ts = cam.tracks[tid]
+                        ts.phone_bbox = best_full_bbox
+                        ts.phone_type = ptype
+                        ts.has_phone  = ptype in ('hand', 'ear')
+                if ptype in ('hand', 'ear'):
+                    phone_tids_by_idx[cam_idx].add(tid)
+
+        # ── Also run custom model for sleeping signal ─────────────────────
+        if r2_custom is not None:
+            for (cam_idx, pe, crop, ox, oy, fh, fw), pr in zip(crop_meta, r2_custom):
+                cam = cams[cam_idx]; tid = pe['track_id']
+                if pr.boxes is None: continue
+                for pb in pr.boxes:
+                    if int(pb.cls[0]) == CUSTOM_SLEEPING and float(pb.conf[0]) >= 0.40:
+                        with cam.tracks_lock:
+                            if tid in cam.tracks:
+                                cam.tracks[tid].pose_sleeping = True
+
+        # ── Process COCO model results (fallback for tids custom missed) ──
+        for (cam_idx, pe, crop, ox, oy, fh, fw), pr in zip(crop_meta, r2_coco):
+            cam = cams[cam_idx]; tid = pe['track_id']
             if pr.boxes is None: continue
+            if tid in custom_handled[cam_idx]: continue  # custom model handled this person
             for pb in pr.boxes:
                 pconf = float(pb.conf[0])
                 if pconf < CONF_PHONE: continue
@@ -399,36 +476,30 @@ class BatchDetectWorker(threading.Thread):
                 full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
                 if not _valid_phone(full_bbox, pe['bbox'], fh, fw): continue
 
-                # Read pose signals from track state for accurate classification
                 ear_signal = False; lw = None; rw = None
                 with cam.tracks_lock:
-                    if pe['track_id'] in cam.tracks:
-                        ts0 = cam.tracks[pe['track_id']]
+                    if tid in cam.tracks:
+                        ts0 = cam.tracks[tid]
                         ear_signal = ts0.phone_on_ear
                         lw = ts0.left_wrist
                         rw = ts0.right_wrist
 
                 ptype = _classify_phone(full_bbox, pe['bbox'], ear_signal, lw, rw)
-
                 phones_by_idx[cam_idx].append({
                     'bbox': full_bbox, 'conf': pconf,
-                    'track_id': pe['track_id'], 'type': ptype
+                    'track_id': tid, 'type': ptype
                 })
-
-                # Update track state immediately so BehaviorEngine sees it
                 with cam.tracks_lock:
-                    if pe['track_id'] in cam.tracks:
-                        ts = cam.tracks[pe['track_id']]
+                    if tid in cam.tracks:
+                        ts = cam.tracks[tid]
                         ts.phone_bbox = full_bbox
                         ts.phone_type = ptype
                         ts.has_phone  = ptype in ('hand', 'ear')
-
                 if ptype in ('hand', 'ear'):
-                    phone_tids_by_idx[cam_idx].add(pe['track_id'])
+                    phone_tids_by_idx[cam_idx].add(tid)
 
         for cam, persons, phones in zip(cams, persons_by_idx, phones_by_idx):
             cam.state.update(phones=phones)
-            # Clear phone state for persons where no phone was found this frame
             detected_tids = {p['track_id'] for p in phones}
             with cam.tracks_lock:
                 for pe in persons:
