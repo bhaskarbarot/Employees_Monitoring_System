@@ -2,11 +2,11 @@
 ═══════════════════════════════════════════════════════
   Dataset Statistics
 ═══════════════════════════════════════════════════════
-  Original images  : 86
-  Augmented images : 383  (auto-generated)
+  Original images  : 87
+  Augmented images : 422  (auto-generated)
 
   Per-class annotations (original):
-  ✓ phone_hand    :  35  █████████████████
+  ✓ phone_hand    :  36  ██████████████████
   ✗ need more phone_ear     :   9  ████
   ✗ need more phone_desk    :   6  ███
   ⚠ sleeping      :  10  █████
@@ -21,23 +21,24 @@
 
 [1/3] Running offline augmentation...
   Existing annotations per class:
-    phone_hand    :  35  (target: 60)
+    phone_hand    :  36  (target: 60)
     phone_ear     :   9  (target: 60)
     phone_desk    :   6  (target: 60)
     sleeping      :  10  (target: 60)
     working       :   0  (target: 60)
 
-  Generated 261 augmented images → training_data/augmented
+  Generated 271 augmented images → training_data/augmented
 
 [2/3] Preparing dataset...
+  Extra training images : 29 (auto_labeled + hard_negatives)
   Model: custom_model (continuing training from best checkpoint)
-  Class counts : {'phone_hand': 35, 'phone_ear': 9, 'phone_desk': 6, 'sleeping': 10, 'working': 0}
+  Class counts : {'phone_hand': 36, 'phone_ear': 9, 'phone_desk': 6, 'sleeping': 10, 'working': 0}
   cls_pw       : 1.67  (>1 = rare classes weighted higher to reduce false negatives)
 
 [3/3] Training:
-  Original images  : 86
-  Augmented added  : 261
-  Total train      : 494  |  Val: 14 (UNSEEN)
+  Original images  : 87
+  Augmented added  : 271
+  Total train      : 624  |  Val: 14 (UNSEEN)
   Base model       : custom_model/weights/best.pt
   Frozen layers    : 10  (backbone kept fixed)
   Max epochs       : 150  (early stop at patience=40)
@@ -46,11 +47,11 @@
 New https://pypi.org/project/ultralytics/8.4.60 available 😃 Update with 'pip install -U ultralytics'
 WARNING ⚠️ 'label_smoothing' is deprecated and will be removed in the future.
 Traceback (most recent call last):
-  File "/home/elsner/Documents/employees/train.py", line 610, in <module>
+  File "/home/elsner/Documents/employees/train.py", line 716, in <module>
     main()
-  File "/home/elsner/Documents/employees/train.py", line 606, in main
+  File "/home/elsner/Documents/employees/train.py", line 712, in main
     train(use_augmented=not args.no_augment)
-  File "/home/elsner/Documents/employees/train.py", line 442, in train
+  File "/home/elsner/Documents/employees/train.py", line 520, in train
     model.train(
   File "/home/elsner/.local/lib/python3.10/site-packages/ultralytics/engine/model.py", line 769, in train
     self.trainer = (trainer or self._smart_load("trainer"))(overrides=args, _callbacks=self.callbacks)
@@ -68,8 +69,8 @@ SyntaxError: '[31m[1mcls_pw[0m' is not a valid YOLO argument. Similar argumen
 
         yolo TASK MODE ARGS
 
-        Where   TASK (optional) is one of ['segment', 'detect', 'classify', 'obb', 'pose']
-                MODE (required) is one of ['benchmark', 'export', 'track', 'val', 'train', 'predict']
+        Where   TASK (optional) is one of ['detect', 'obb', 'segment', 'pose', 'classify']
+                MODE (required) is one of ['predict', 'train', 'val', 'track', 'benchmark', 'export']
                 ARGS (optional) are any number of custom 'arg=value' pairs like 'imgsz=320' that override defaults.
                     See all ARGS at https://docs.ultralytics.com/usage/cfg or with 'yolo cfg'
 

@@ -834,3 +834,4 @@
 [2026-06-02 10:02:31]  [Cam9:D9]  [PHONE_HAND]  0m 02s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260602_100231.jpg
 [2026-06-02 10:03:34]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam2_PHONE_HAND_20260602_100334.jpg
 [2026-06-02 10:05:47]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: logs/photos/Cam9_PHONE_HAND_20260602_100547.jpg
+[2026-06-03 11:53:51]  [Cam9:D9]  [PHONE_HAND]  0m 12s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_HAND_20260603_115351.jpg
