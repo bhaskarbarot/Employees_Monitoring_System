@@ -1,35 +1,36 @@
-11:58:18 [monitor       ] INFO     [v4] tracker.py loaded — ByteTrack-hybrid + DeskZoneReID active
-11:58:18 [monitor       ] INFO     [v4] fusion.py loaded — probabilistic FusionEngine active
-11:58:18 [monitor       ] INFO     ═════════════════════════════════════════════════════════════════
-11:58:18 [monitor       ] INFO       GPU          : NVIDIA RTX 2000 Ada Generation  (15945 MB)
-11:58:18 [monitor       ] INFO       Tracker      : ByteTrack-Kalman+ReID (v4)
-11:58:18 [monitor       ] INFO       Fusion       : PhoneFusion+SleepFusion (v4)
-11:58:18 [monitor       ] INFO       AutoLabel    : active
-11:58:18 [monitor       ] INFO       HardNeg      : active
-11:58:18 [monitor       ] INFO     ═════════════════════════════════════════════════════════════════
-11:58:18 [monitor       ] INFO     Loading shared models...
-11:58:18 [monitor       ] INFO     [Models] yolov8s (person+phone) → PyTorch .pt  fp16=True
-11:58:20 [monitor       ] INFO     [Models] custom classifier → PyTorch .pt  fp16=True
-11:58:21 [monitor       ] INFO     [Models] *** Custom model active — better phone accuracy ***
-11:58:21 [monitor       ] INFO     [Models] yolov8n-pose → PyTorch .pt  fp16=True
-11:58:21 [monitor       ] INFO     [Models] ready.
-11:58:21 [monitor       ] INFO     Loaded 4 cameras from cameras.json
-11:58:21 [monitor       ] INFO     Initializing 4 camera(s)...
-11:58:21 [monitor       ] INFO     ✓ DeskZoneReID registry active
-11:58:21 [auto_label    ] INFO     [AutoLabel] started — scanning every 30s
-11:58:21 [monitor       ] INFO     ✓ AutoLabelService started
-11:58:21 [mining        ] INFO     [HardNegMiner] started — mining every 60s
-11:58:21 [monitor       ] INFO     ✓ HardNegativeMiner started
-11:58:21 [monitor       ] INFO     [Cam-2] D2  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=2&subtype=0
-11:58:21 [monitor       ] INFO     Waiting for cameras...
-11:58:23 [monitor       ] INFO     [Cam-6] D6  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=6&subtype=0
-11:58:24 [monitor       ] INFO     [Cam-2] D2 — stream open
-11:58:24 [monitor       ] INFO     1/4 cameras live.
-11:58:24 [monitor       ] INFO     ✓ BatchDetectWorker  (motion-gated, all 4 cams)
-11:58:24 [monitor       ] INFO     ✓ BatchPoseWorker    (yolov8n-pose, all 4 cams)
-11:58:24 [monitor       ] INFO     [Cam-9] D9  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=9&subtype=0
-11:58:26 [monitor       ] INFO     [Cam-19] D19  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=19&subtype=0
-11:58:26 [monitor       ] INFO     [Cam-6] D6 — stream open
+12:13:38 [monitor       ] INFO     [v4] tracker.py loaded — ByteTrack-hybrid + DeskZoneReID active
+12:13:38 [monitor       ] INFO     [v4] fusion.py loaded — probabilistic FusionEngine active
+12:13:38 [monitor       ] INFO     ═════════════════════════════════════════════════════════════════
+12:13:38 [monitor       ] INFO       GPU          : NVIDIA RTX 2000 Ada Generation  (15945 MB)
+12:13:38 [monitor       ] INFO       Tracker      : ByteTrack-Kalman+ReID (v4)
+12:13:38 [monitor       ] INFO       Fusion       : PhoneFusion+SleepFusion (v4)
+12:13:38 [monitor       ] INFO       AutoLabel    : active
+12:13:38 [monitor       ] INFO       HardNeg      : active
+12:13:38 [monitor       ] INFO     ═════════════════════════════════════════════════════════════════
+12:13:38 [monitor       ] INFO     Loading shared models...
+12:13:38 [monitor       ] INFO     [Models] yolov8s (person+phone) → PyTorch .pt  fp16=True
+12:13:40 [monitor       ] INFO     [Models] custom classifier → PyTorch .pt  fp16=True
+12:13:41 [monitor       ] INFO     [Models] *** Custom model active — better phone accuracy ***
+12:13:41 [monitor       ] INFO     [Models] yolov8n-pose → PyTorch .pt  fp16=True
+12:13:41 [monitor       ] INFO     [Models] ready.
+12:13:41 [monitor       ] INFO     Loaded 4 cameras from cameras.json
+12:13:41 [monitor       ] INFO     Initializing 4 camera(s)...
+12:13:41 [monitor       ] INFO     ✓ DeskZoneReID registry active
+12:13:41 [auto_label    ] INFO     [AutoLabel] started — scanning every 30s
+12:13:41 [monitor       ] INFO     ✓ AutoLabelService started
+12:13:41 [mining        ] INFO     [HardNegMiner] started — mining every 60s
+12:13:41 [monitor       ] INFO     ✓ HardNegativeMiner started
+12:13:41 [monitor       ] INFO     [Cam-2] D2  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=2&subtype=0
+12:13:41 [monitor       ] INFO     Waiting for cameras...
+12:13:43 [monitor       ] INFO     [Cam-6] D6  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=6&subtype=0
+12:13:44 [monitor       ] INFO     [Cam-9] D9  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=9&subtype=0
+12:13:44 [monitor       ] INFO     [Cam-2] D2 — stream open
+12:13:45 [monitor       ] INFO     1/4 cameras live.
+12:13:45 [monitor       ] INFO     ✓ BatchDetectWorker  (motion-gated, all 4 cams)
+12:13:45 [monitor       ] INFO     ✓ BatchPoseWorker    (yolov8n-pose, all 4 cams)
+12:13:46 [monitor       ] INFO     [Cam-19] D19  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=19&subtype=0
+12:13:47 [monitor       ] INFO     [Cam-6] D6 — stream open
+12:13:49 [monitor       ] INFO     [Cam-9] D9 — stream open
 /home/elsner/.local/lib/python3.10/site-packages/onnxruntime/capi/onnxruntime_inference_collection.py:123: UserWarning: Specified provider 'CUDAExecutionProvider' is not in available provider names.Available providers: 'AzureExecutionProvider, CPUExecutionProvider'
   warnings.warn(
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
@@ -38,32 +39,31 @@ Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvide
 model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
 set det-size: (160, 160)
   [Face-2] InsightFace ready
-11:58:27 [monitor       ] INFO     ✓ Workers for D2
+12:13:50 [monitor       ] INFO     ✓ Workers for D2
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
 find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
 model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
 set det-size: (160, 160)
   [Face-6] InsightFace ready
-11:58:27 [monitor       ] INFO     ✓ Workers for D6
+12:13:50 [monitor       ] INFO     ✓ Workers for D6
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
 find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
 model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
 set det-size: (160, 160)
   [Face-9] InsightFace ready
-11:58:27 [monitor       ] INFO     ✓ Workers for D9
+12:13:50 [monitor       ] INFO     ✓ Workers for D9
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
 find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
 Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
 model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
 set det-size: (160, 160)
   [Face-19] InsightFace ready
-11:58:28 [monitor       ] INFO     ✓ Workers for D19
-11:58:28 [monitor       ] INFO     ✓ OllamaVerifier
-11:58:28 [monitor       ] INFO     Employee Monitor v4 — 4 cam(s). Headless=True. Ctrl+C to stop.
+12:13:50 [monitor       ] INFO     ✓ Workers for D19
+12:13:50 [monitor       ] INFO     ✓ OllamaVerifier
+12:13:50 [monitor       ] INFO     Employee Monitor v4 — 4 cam(s). Headless=True. Ctrl+C to stop.
   [OllamaVerifier] disabled (USE_OLLAMA=false in .env)
-11:58:29 [monitor       ] INFO     [Cam-9] D9 — stream open
-11:58:30 [monitor       ] INFO     [Cam-19] D19 — stream open
-11:58:58 [auto_label    ] INFO     [AutoLabel] labeled 1 new photos
-12:00:58 [monitor       ] INFO     Stopped.
+12:13:51 [monitor       ] INFO     [Cam-19] D19 — stream open
+12:14:20 [auto_label    ] INFO     [AutoLabel] labeled 1 new photos
+12:17:39 [monitor       ] INFO     Stopped.
