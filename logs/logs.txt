@@ -1,26 +1,10 @@
-[2026-06-03 16:30:28]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_HAND_20260603_163028.jpg
-[2026-06-03 16:30:28]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_HAND_20260603_163028.jpg
-[2026-06-03 16:30:31]  [Cam9:D9]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_EAR_20260603_163031.jpg
-[2026-06-03 16:30:31]  [Cam9:D9]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_EAR_20260603_163031.jpg
-[2026-06-03 16:30:36]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_HAND_20260603_163036.jpg
-[2026-06-03 16:30:38]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_HAND_20260603_163038.jpg
-[2026-06-03 16:30:38]  [Cam2:D2]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_EAR_20260603_163038.jpg
-[2026-06-03 16:30:38]  [Cam19:D19]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam19_PHONE_HAND_20260603_163038.jpg
-[2026-06-03 16:30:41]  [Cam6:D6]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_HAND_20260603_163041.jpg
-[2026-06-03 16:30:48]  [Cam19:D19]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam19_PHONE_HAND_20260603_163048.jpg
-[2026-06-03 16:30:53]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_HAND_20260603_163053.jpg
-[2026-06-03 16:30:58]  [Cam6:D6]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_HAND_20260603_163058.jpg
-[2026-06-03 16:31:04]  [Cam6:D6]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_EAR_20260603_163104.jpg
-[2026-06-03 16:31:07]  [Cam6:D6]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_HAND_20260603_163107.jpg
-[2026-06-03 16:31:10]  [Cam2:D2]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_EAR_20260603_163110.jpg
-[2026-06-03 16:31:12]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_HAND_20260603_163112.jpg
-[2026-06-03 16:31:17]  [Cam2:D2]  [PHONE_HAND]  0m 40s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_HAND_20260603_163117.jpg
-[2026-06-03 16:31:21]  [Cam2:D2]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_HAND_20260603_163121.jpg
-[2026-06-03 16:31:30]  [Cam2:D2]  [PHONE_HAND]  0m 12s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_HAND_20260603_163130.jpg
-[2026-06-03 16:31:43]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_HAND_20260603_163143.jpg
-[2026-06-03 16:31:50]  [Cam19:D19]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam19_PHONE_HAND_20260603_163150.jpg
-[2026-06-03 16:32:01]  [Cam19:D19]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam19_PHONE_HAND_20260603_163201.jpg
-[2026-06-03 16:32:09]  [Cam6:D6]  [PHONE_HAND]  0m 52s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_HAND_20260603_163209.jpg
-[2026-06-03 16:32:14]  [Cam9:D9]  [PHONE_HAND]  0m 00s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_HAND_20260603_163214.jpg
-[2026-06-03 16:32:14]  [Cam19:D19]  [PHONE_HAND]  0m 17s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam19_PHONE_HAND_20260603_163214.jpg
-[2026-06-03 16:32:16]  [Cam9:D9]  [PHONE_EAR]  0m 00s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_EAR_20260603_163216.jpg
+[2026-06-03 17:24:54]  [Cam6:D6]  [PHONE_EAR]  0m 03s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_EAR_20260603_172454.jpg
+[2026-06-03 17:24:58]  [Cam9:D9]  [PHONE_HAND]  0m 04s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam9_PHONE_HAND_20260603_172458.jpg
+[2026-06-03 17:25:15]  [Cam2:D2]  [PHONE_HAND]  0m 15s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_HAND_20260603_172515.jpg
+[2026-06-03 17:25:19]  [Cam2:D2]  [PHONE_HAND]  0m 24s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_HAND_20260603_172519.jpg
+[2026-06-03 17:27:57]  [Cam6:D6]  [PHONE_HAND]  0m 17s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_HAND_20260603_172757.jpg
+[2026-06-03 17:28:00]  [Cam6:D6]  [PHONE_EAR]  0m 03s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_EAR_20260603_172800.jpg
+[2026-06-03 17:28:07]  [Cam6:D6]  [PHONE_HAND]  0m 04s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_HAND_20260603_172807.jpg
+[2026-06-03 17:28:19]  [Cam2:D2]  [PHONE_HAND]  0m 03s  —  Employee detected holding phone in hand.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam2_PHONE_HAND_20260603_172819.jpg
+[2026-06-03 17:28:31]  [Cam6:D6]  [PHONE_EAR]  0m 03s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_EAR_20260603_172831.jpg
+[2026-06-03 17:28:31]  [Cam6:D6]  [PHONE_EAR]  0m 03s  —  Employee detected talking on phone / phone held to ear.  |  photo: /home/elsner/Documents/employees/logs/photos/Cam6_PHONE_EAR_20260603_172831.jpg

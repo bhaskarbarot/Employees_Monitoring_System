@@ -85,8 +85,9 @@ SLEEP_THRESHOLD      = int(os.getenv("SLEEP_THRESHOLD_SEC",       "120"))
 # ── Session-based phone timing ─────────────────────────────────────────────
 # Photo saved when session ENDS (not on detection start)
 PHONE_SESSION_GRACE  = float(os.getenv("PHONE_SESSION_GRACE_SEC",  "6"))   # seconds without detection = session ended
-PHONE_SESSION_MIN    = float(os.getenv("PHONE_SESSION_MIN_SEC",    "5"))    # save photos for sessions >= 5s (was 20s)
+PHONE_SESSION_MIN    = float(os.getenv("PHONE_SESSION_MIN_SEC",    "5"))    # save END photo for sessions >= 5s
 PHONE_SESSION_MAX    = int(os.getenv("PHONE_SESSION_MAX_SEC",      "600"))  # periodic save every N sec during long sessions
+PHONE_IMMEDIATE_MIN  = float(os.getenv("PHONE_IMMEDIATE_MIN_SEC",  "3"))    # save IMMEDIATE photo only after 3s sustained
 MOTION_STILL_SECS    = 60
 MOTION_THRESH        = 0.012
 MIN_TRACK_AGE        = 30
@@ -194,11 +195,18 @@ class TrackState:
         self.pose_sleeping = False; self.face_visible = True
         self.motion_score = 1.0; self.is_still = False; self.still_since = None
         self.head_yaw = 0.0
-        # wrist keypoints — used by phone classifier to confirm hand is on phone
-        self.left_wrist  = None   # (x, y, conf)
+        # Pose keypoints stored for FP rejection guards
+        self.left_wrist  = None   # (x, y, conf) — phone-in-hand confirmation
         self.right_wrist = None   # (x, y, conf)
+        self.nose        = None   # (x, y, conf) — face-touch rejection
+        self.left_ear    = None   # (x, y, conf) — earphone rejection
+        self.right_ear   = None   # (x, y, conf)
         # Legacy frame-ratio accumulators (v3 — kept for backward compat)
-        self.ev_phone = EvidenceAcc(window=10, min_ratio=0.20, min_frames=3)
+        # Raised from (window=10, ratio=0.20, frames=3):
+        #   ratio=0.20 meant just 2 True in 10 ticks = confirmed (1 second of FP posture).
+        #   ratio=0.35 + frames=5 requires 2 True in 5 ticks (2.5s min) with 35% sustained.
+        #   Real phone use (70%+ hit rate) confirms in ~5 ticks. Brief gestures (<30%) don't.
+        self.ev_phone = EvidenceAcc(window=12, min_ratio=0.35, min_frames=5)
         self.ev_sleep = EvidenceAcc(window=12, min_ratio=0.75)
 
         # v4 probabilistic fusion engines (active if fusion.py imported)
@@ -602,15 +610,15 @@ class SimpleTracker:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _classify_phone(phone_bbox, person_bbox, phone_on_ear_signal=False,
-                    left_wrist=None, right_wrist=None):
+                    left_wrist=None, right_wrist=None,
+                    left_ear=None, right_ear=None):
     """
     Classify phone position.  Returns: 'ear' | 'hand' | 'desk'
 
-    Logic:
-      1. PoseWorker ear signal → 'ear'
-      2. Phone in top 28% of person bbox → 'ear'
-      3. Wrist keypoint is INSIDE or touching the phone bbox → 'hand'
-      4. No wrist near phone → 'desk'  (phone lying on desk, not held)
+    Guards against common false positives:
+      • Bottom 25% of person bbox + no wrist near = desk/mouse, not phone
+      • Top 28% (ear zone) but no ear keypoint within 70px = earphone/clip, not call
+      • No wrist near phone anywhere = phone lying on desk
     """
     if phone_on_ear_signal:
         return 'ear'
@@ -623,16 +631,40 @@ def _classify_phone(phone_bbox, person_bbox, phone_on_ear_signal=False,
     p_h = max(ey2 - ey1, 1)
     rel_y = (phone_cy - ey1) / p_h
 
-    # Top 28% = head/ear zone
+    # ── Guard: bottom 25% of person bbox = desk/lap level ──────────────────────
+    # A mouse or keyboard object at desk level (rel_y > 0.75) is only a phone
+    # if a wrist is clearly right next to it. Without wrist → reclassify as desk.
+    if rel_y > 0.75:
+        wrist_near = False
+        for wrist in (left_wrist, right_wrist):
+            if wrist is None: continue
+            wx, wy, wc = wrist
+            if wc < 0.30: continue
+            if (px1 - 30 <= wx <= px2 + 30 and py1 - 30 <= wy <= py2 + 30):
+                wrist_near = True; break
+        if not wrist_near:
+            _log.debug("FP-guard: bottom-of-bbox, no wrist → desk (mouse/object)")
+            return 'desk'
+
+    # ── Top 28% = head/ear zone — verify ear keypoint is nearby ────────────────
+    # Earphones, hair clips, and small objects near the head all land in this zone.
+    # A real phone call has an ear keypoint within ~70px of the phone center.
     if rel_y < 0.28:
+        if left_ear is not None or right_ear is not None:
+            ear_near = False
+            for ear in (left_ear, right_ear):
+                if ear is None: continue
+                ex, ey, ec = ear
+                if ec < 0.25: continue
+                if abs(ex - phone_cx) < 70 and abs(ey - phone_cy) < 70:
+                    ear_near = True; break
+            if not ear_near:
+                _log.debug("FP-guard: ear-zone but no ear keypoint near → desk (earphone/clip)")
+                return 'desk'
         return 'ear'
 
-    # Wrist proximity check.
-    # 30px margin — balanced for overhead camera keypoint imprecision (~10-20px).
-    # Previous 60% was too loose (desk phone triggered when typing nearby).
-    # 12px was too tight (real phone holding missed from overhead angle).
-    MARGIN = 30   # pixels — wrist must be within ~1 phone-width of phone
-
+    # ── Wrist proximity: phone in middle body zone, wrist must be nearby ───────
+    MARGIN = 30
     for wrist in (left_wrist, right_wrist):
         if wrist is None: continue
         wx, wy, wc = wrist
@@ -641,7 +673,6 @@ def _classify_phone(phone_bbox, person_bbox, phone_on_ear_signal=False,
                 py1 - MARGIN <= wy <= py2 + MARGIN):
             return 'hand'
 
-    # No wrist near phone → lying on desk, person not holding it
     return 'desk'
 
 
@@ -954,18 +985,20 @@ class BatchDetectWorker(threading.Thread):
             if pr.boxes is None: continue
             cam = cams[cam_idx]
             for pb in pr.boxes:
-                # Get wrist signals for classification
-                ear_sig = False; lw = None; rw = None
+                # Get wrist + ear signals for classification
+                ear_sig = False; lw = None; rw = None; le = None; re = None
                 with cam.tracks_lock:
                     if pe['track_id'] in cam.tracks:
                         ts0 = cam.tracks[pe['track_id']]
                         ear_sig = ts0.phone_on_ear
                         lw = ts0.left_wrist
                         rw = ts0.right_wrist
+                        le = ts0.left_ear
+                        re = ts0.right_ear
                 # Compute full-frame phone bbox for classification
                 px1, py1, px2, py2 = map(int, pb.xyxy[0])
                 full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
-                ptype = _classify_phone(full_bbox, pe['bbox'], ear_sig, lw, rw)
+                ptype = _classify_phone(full_bbox, pe['bbox'], ear_sig, lw, rw, le, re)
                 _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, ptype, min_conf=0.25)
 
                 if ptype in ('hand', 'ear'):
@@ -1044,6 +1077,9 @@ class BatchPoseWorker(threading.Thread):
                     ts.head_yaw      = res['yaw_deg']
                     ts.left_wrist    = res['left_wrist']
                     ts.right_wrist   = res['right_wrist']
+                    ts.nose          = res['nose']
+                    ts.left_ear      = res['left_ear']
+                    ts.right_ear     = res['right_ear']
 
     def _match(self, nx, ny, persons, frame_h=720, frame_w=1280):
         """
@@ -1119,8 +1155,11 @@ class BatchPoseWorker(threading.Thread):
         #   phone-caller wrist-ear dy≈57px, dx≈126px → both pass at 1080p
         #   non-caller   wrist-ear dy≈86px            → blocked by dy>thr_y
         ear_phone = False
-        thr_y = max(sh_span * 0.55, h * 0.06)   # was sh_span*0.55 = 22px (too tight)
-        thr_x = max(sh_span * 0.65, w * 0.08)   # was sh_span*0.65 = 26px (too tight)
+        # thr_x tightened from 8% to 5% of width:
+        #   8% (102px) was triggering for chin-resting, thinking, and conversation gestures.
+        #   5% (64px) requires wrist to be genuinely AT the ear, not just near the face.
+        thr_y = max(sh_span * 0.55, h * 0.06)   # 43px at 720
+        thr_x = max(sh_span * 0.65, w * 0.05)   # 64px at 1280 (was 102px)
         if lwc >= C and lec >= C:
             if abs(lw_y - le_y) < thr_y and abs(lw_x - le_x) < thr_x:
                 ear_phone = True
@@ -1139,13 +1178,17 @@ class BatchPoseWorker(threading.Thread):
         elif right_visible: yaw_deg = -55.0
         else:               yaw_deg =   0.0
 
-        # Wrist positions passed back so phone classifier can confirm hand is on phone
-        lw_out = (lw_x, lw_y, lwc) if lwc >= 0.20 else None
-        rw_out = (rw_x, rw_y, rwc) if rwc >= 0.20 else None
+        lw_out  = (lw_x, lw_y, lwc) if lwc >= 0.20 else None
+        rw_out  = (rw_x, rw_y, rwc) if rwc >= 0.20 else None
+        # Nose + ears: used for face-touch and earphone FP rejection
+        nose_out = (nose_x, nose_y, nc)   if nc  >= 0.20 else None
+        le_out   = (le_x,  le_y,  lec)   if lec >= 0.20 else None
+        re_out   = (re_x,  re_y,  rec)   if rec >= 0.20 else None
 
         return dict(sleeping=sleeping, phone_on_ear=ear_phone,
                     yaw_deg=yaw_deg,
-                    left_wrist=lw_out, right_wrist=rw_out)
+                    left_wrist=lw_out, right_wrist=rw_out,
+                    nose=nose_out, left_ear=le_out, right_ear=re_out)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1334,8 +1377,10 @@ class OllamaVerifier(threading.Thread):
         super().__init__(daemon=True, name="OllamaVerifier")
         self._seen     = set()
         self._photos   = Path("logs/photos")
-        self._log_file = Path("logs/logs.txt")
-        self._train_dir = Path("training_data")
+        self._log_file    = Path("logs/logs.txt")
+        self._train_dir   = Path("training_data")
+        self._verified_db = Path("logs/photos/verified.json")   # persists across restarts
+        self._verified_db.parent.mkdir(parents=True, exist_ok=True)
 
     # Vision-capable models in priority order (Qwen2.5-VL is best)
     _VISION_MODELS = [
@@ -1374,6 +1419,12 @@ class OllamaVerifier(threading.Thread):
             print(f"  [OllamaVerifier] Cannot reach Ollama: {e}")
             return None
 
+    # How many photos to verify in parallel.
+    # Ollama queues concurrent requests and interleaves GPU computation — 3 workers
+    # means 3 photos overlap in I/O + queuing, cutting total wait by ~2–3×.
+    # Increase if you have more VRAM (e.g. 4 for 24GB+ GPU).
+    _WORKERS = int(os.getenv("OLLAMA_WORKERS", "3"))
+
     def run(self):
         from dotenv import load_dotenv; load_dotenv()
         if os.getenv("USE_OLLAMA", "false").lower() == "false":
@@ -1382,51 +1433,79 @@ class OllamaVerifier(threading.Thread):
         model = self._find_vision_model()
         if not model:
             return
-        print(f"  [OllamaVerifier] started — model={model} — scanning photos every 8s")
+        print(f"  [OllamaVerifier] started — model={model} "
+              f"workers={self._WORKERS} — scanning every 4s")
 
         while _running:
             try: self._scan(model)
             except Exception as e: print(f"  [OllamaVerifier] {e}")
-            time.sleep(8)
+            time.sleep(4)   # was 8s — scan more often, process all pending in parallel
 
     def _scan(self, model: str) -> None:
+        import concurrent.futures
         if not self._photos.exists():
             return
 
-        photos = sorted(self._photos.glob("Cam*.jpg"),
-                        key=lambda x: x.stat().st_mtime, reverse=True)[:15]
+        # Process ALL pending photos — not capped at 15
+        all_photos = sorted(self._photos.glob("Cam*.jpg"),
+                            key=lambda x: x.stat().st_mtime, reverse=True)
 
-        # ── Prune _seen: remove names of files that no longer exist on disk ──
-        # Without this, _seen grows unboundedly: OllamaVerifier deletes the file
-        # (answer == NO) but the name stays in _seen forever, so any file that is
-        # later written with the same timestamp string is silently skipped.
-        existing_names = {p.name for p in self._photos.glob("Cam*.jpg")}
-        self._seen &= existing_names   # set intersection-update
+        # Prune _seen to only files still on disk
+        self._seen &= {p.name for p in all_photos}
 
-        for p in photos:
+        # Collect unprocessed photos with their questions
+        tasks = []
+        for p in all_photos:
             if p.name in self._seen:
                 continue
-            self._seen.add(p.name)
+            q = next((q for key, q in self.QUESTIONS.items() if key in p.name), None)
+            if q is None:
+                self._seen.add(p.name)   # no question → skip permanently
+                continue
+            self._seen.add(p.name)       # mark before dispatching (prevents double-send)
+            tasks.append((p, q))
 
-            # Determine question based on event in filename
-            q = None
-            for event_key, question in self.QUESTIONS.items():
-                if event_key in p.name:
-                    q = question; break
-            if q is None: continue
+        if not tasks:
+            return
 
-            answer = self._ask(str(p), q, model)
+        _log.info("[OllamaVerifier] %d new photo(s) → verifying with %d workers",
+                  len(tasks), self._WORKERS)
 
-            if answer == "NO":
-                print(f"  [OllamaVerifier] ✗ FALSE POSITIVE → removing {p.name}")
+        def _verify(args):
+            p, q = args
+            return p, self._ask(str(p), q, model)
+
+        # Send all tasks concurrently — Ollama queues and overlaps I/O
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self._WORKERS) as pool:
+            for future in concurrent.futures.as_completed(
+                    [pool.submit(_verify, t) for t in tasks]):
                 try:
-                    p.unlink()
-                    self._remove_log_entry(p.name)
+                    p, answer = future.result()
+                    if answer == "NO":
+                        _log.info("[OllamaVerifier] ✗ FP removed: %s", p.name)
+                        try:
+                            p.unlink()
+                            self._remove_log_entry(p.name)
+                        except Exception as e:
+                            _log.warning("[OllamaVerifier] delete error: %s", e)
+                    else:
+                        _log.info("[OllamaVerifier] ✓ confirmed: %s", p.name)
+                        self._mark_verified(p.name)
+                        self._save_to_training(p)
                 except Exception as e:
-                    print(f"  [OllamaVerifier] delete error: {e}")
-            else:
-                print(f"  [OllamaVerifier] ✓ confirmed {p.name}")
-                self._save_to_training(p)
+                    _log.warning("[OllamaVerifier] task error: %s", e)
+
+    def _mark_verified(self, filename: str) -> None:
+        """Add filename to verified.json so the web UI can show only confirmed photos."""
+        import json as _json
+        try:
+            existing = set()
+            if self._verified_db.exists():
+                existing = set(_json.loads(self._verified_db.read_text()))
+            existing.add(filename)
+            self._verified_db.write_text(_json.dumps(sorted(existing)))
+        except Exception as e:
+            _log.warning("[OllamaVerifier] verified.json write error: %s", e)
 
     def _ask(self, image_path, question, model):
         try:
@@ -1539,6 +1618,21 @@ class BehaviorEngine(threading.Thread):
         live_bbox_by_tid = {pe['track_id']: pe['bbox'] for pe in live_snap['persons']}
 
         for tid, ts in snap.items():
+            # ── Face-touch rejection ───────────────────────────────────────────────
+            # If the nose keypoint is INSIDE the phone bbox, the "phone" is the
+            # person's own hand touching/scratching their face — reset the evidence.
+            if ts.phone_type == 'hand' and ts.phone_bbox is not None and ts.nose is not None:
+                _nx, _ny, _nc = ts.nose
+                if _nc >= 0.30:
+                    _pb = ts.phone_bbox
+                    if _pb[0] < _nx < _pb[2] and _pb[1] < _ny < _pb[3]:
+                        _log.info("[FP-guard] face-touch: nose inside phone bbox t=%d %s",
+                                  tid, self.cam.name)
+                        ts.ev_phone.reset()
+                        if ts.phone_fusion and hasattr(ts.phone_fusion, 'reset'):
+                            ts.phone_fusion.reset()
+                        ts.phone_type = None; ts.has_phone = False; ts.phone_bbox = None
+
             # ── Update legacy EvidenceAcc (always maintained for compatibility) ─
             ts.ev_phone.add(ts.phone_raw)
             ts.ev_sleep.add(ts.sleep_raw)
@@ -1596,35 +1690,40 @@ class BehaviorEngine(threading.Thread):
 
                         if t.phone_session_start is None:
                             # ── Phase 6: Alert deduplication ─────────────────
-                            # If same event ended < 60s ago for this track,
-                            # extend the old session rather than create a new alert
                             _DEDUP_COOLDOWN = 60.0
                             recent_same = (
                                 t.last_alert_event_type == event and
                                 now - t.last_alert_end_time < _DEDUP_COOLDOWN
                             )
                             if not recent_same:
-                                # ── NEW SESSION: save IMMEDIATE photo ────────
-                                # Set session_ptype BEFORE annotate_cam so the
-                                # box label uses the correct type (EAR vs HAND).
+                                # ── NEW SESSION: just mark start — no photo yet ──
+                                # Photo fires only after PHONE_IMMEDIATE_MIN seconds
+                                # of sustained detection (kills brief-posture FPs).
                                 t.phone_session_start = now
-                                t.phone_session_ptype = ptype   # ← FIRST
+                                t.phone_session_ptype = ptype
                                 t.phone_session_saved = now
-                                ann_first = annotate_cam(self.cam)  # sees ptype above
-                                ann_first = _force_red_box(ann_first, t, ptype,
-                                                           self.cam.state.get_frame())
-                                t.phone_session_ann = ann_first
-                                self._fire(event, ann_first, self._det(t, "phone"),
-                                           0, self.cam.cam_id, self.cam.name)
+                                t.phone_session_ann   = None   # not yet captured
                             else:
-                                # Resume: re-open session silently (no duplicate photo)
                                 t.phone_session_start = t.last_alert_end_time
                                 t.phone_session_ptype = ptype
                                 t.phone_session_saved = now
                                 t.phone_session_ann   = None
                         else:
-                            # ── ONGOING SESSION: update best frame every 8s ──
-                            if now - t.phone_session_saved >= 8:
+                            elapsed = now - t.phone_session_start
+                            if t.phone_session_ann is None and elapsed >= PHONE_IMMEDIATE_MIN:
+                                # ── IMMEDIATE PHOTO: first save after N seconds ──
+                                # Person has been holding phone for PHONE_IMMEDIATE_MIN s
+                                # — confirmed real use, not a brief gesture.
+                                t.phone_session_ptype = ptype
+                                t.phone_session_saved = now
+                                ann_first = annotate_cam(self.cam)
+                                ann_first = _force_red_box(ann_first, t, ptype,
+                                                           self.cam.state.get_frame())
+                                t.phone_session_ann = ann_first
+                                self._fire(event, ann_first, self._det(t, "phone"),
+                                           elapsed, self.cam.cam_id, self.cam.name)
+                            elif t.phone_session_ann is not None and now - t.phone_session_saved >= 8:
+                                # ── ONGOING SESSION: update best frame every 8s ──
                                 ann_cur = annotate_cam(self.cam)
                                 ann_cur = _force_red_box(ann_cur, t, ptype,
                                                           self.cam.state.get_frame())

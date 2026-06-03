@@ -117,6 +117,17 @@ CAMS       = json.load(open(_BASE / "cameras.json")) if (_BASE / "cameras.json")
 STREAMS    = {c["name"]: CameraStream(c) for c in CAMS}
 CAM_ID_MAP = {c["name"]: f"Cam{c['id']}" for c in CAMS}
 
+VERIFIED_DB = PHOTOS_DIR / "verified.json"   # written by OllamaVerifier in monitor.py
+
+def _get_verified_names() -> set:
+    """Return the set of LLM-verified photo filenames. Empty set = show none until verified."""
+    try:
+        if VERIFIED_DB.exists():
+            return set(json.loads(VERIFIED_DB.read_text()))
+    except Exception:
+        pass
+    return set()
+
 
 # ── Alert parsing helpers ──────────────────────────────────────────────────────
 
@@ -465,8 +476,10 @@ def api_health():
 def api_alerts():
     def _compute():
         if not PHOTOS_DIR.exists(): return []
-        photos = sorted(PHOTOS_DIR.glob("*.jpg"),
-                        key=lambda x: x.stat().st_mtime, reverse=True)
+        verified = _get_verified_names()
+        photos = sorted(
+            [p for p in PHOTOS_DIR.glob("*.jpg") if p.name in verified],
+            key=lambda x: x.stat().st_mtime, reverse=True)
         return _sessions(photos[:120])
     return jsonify(_cached("alerts", 4.0, _compute))
 
@@ -475,8 +488,10 @@ def api_alerts():
 def api_photos_all():
     def _compute():
         if not PHOTOS_DIR.exists(): return []
-        photos = sorted(PHOTOS_DIR.glob("Cam*.jpg"),
-                        key=lambda x: x.stat().st_mtime, reverse=True)[:200]
+        verified = _get_verified_names()
+        photos = sorted(
+            [p for p in PHOTOS_DIR.glob("Cam*.jpg") if p.name in verified],
+            key=lambda x: x.stat().st_mtime, reverse=True)[:200]
         return [p for p in [_parse_photo(x) for x in photos] if p]
     return jsonify(_cached("photos_all", 3.0, _compute))
 
@@ -487,8 +502,10 @@ def api_camera_alerts(name):
     if not cam: return jsonify([])
     prefix = f"Cam{cam['id']}_"
     def _compute():
+        verified = _get_verified_names()
         photos = sorted(
-            [p for p in PHOTOS_DIR.glob("*.jpg") if p.name.startswith(prefix)],
+            [p for p in PHOTOS_DIR.glob("*.jpg")
+             if p.name.startswith(prefix) and p.name in verified],
             key=lambda x: x.stat().st_mtime, reverse=True)
         return _sessions(photos[:60])
     return jsonify(_cached(f"cam_alerts_{name}", 4.0, _compute))
@@ -498,6 +515,7 @@ def api_camera_alerts(name):
 def api_logs():
     def _compute():
         if not LOGS_FILE.exists(): return []
+        verified = _get_verified_names()
         lines = LOGS_FILE.read_text(errors="ignore").splitlines()
         clean = [l for l in lines if l.strip() and "[" in l]
         result = []
@@ -506,7 +524,8 @@ def api_logs():
             if "photo:" in l:
                 try:
                     fname = Path(l.split("photo:")[-1].strip()).name
-                    if fname and (PHOTOS_DIR / fname).exists():
+                    # Only link photo if it has been LLM-verified
+                    if fname and fname in verified and (PHOTOS_DIR / fname).exists():
                         photo = f"/photos/{fname}"
                 except Exception:
                     pass
