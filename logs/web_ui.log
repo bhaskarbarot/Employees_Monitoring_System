@@ -1,6 +1,5 @@
-[2026-06-03 14:49:16 +0530] [823379] [INFO] Starting gunicorn 26.0.0
-[2026-06-03 14:49:16 +0530] [823379] [INFO] Listening at: http://0.0.0.0:5000 (823379)
-[2026-06-03 14:49:16 +0530] [823379] [INFO] Using worker: gthread
-[2026-06-03 14:49:16 +0530] [823381] [INFO] Booting worker with pid: 823381
-[2026-06-03 14:49:16 +0530] [823379] [INFO] Control socket listening at /run/user/1000/gunicorn.ctl
-[2026-06-03 15:32:29 +0530] [823381] [INFO] Parent changed, shutting down: <Worker 823381>
+[2026-06-03 16:04:53 +0530] [1865968] [INFO] Starting gunicorn 26.0.0
+[2026-06-03 16:04:53 +0530] [1865968] [INFO] Listening at: http://0.0.0.0:5000 (1865968)
+[2026-06-03 16:04:53 +0530] [1865968] [INFO] Using worker: gthread
+[2026-06-03 16:04:53 +0530] [1865969] [INFO] Booting worker with pid: 1865969
+[2026-06-03 16:04:53 +0530] [1865968] [INFO] Control socket listening at /run/user/1000/gunicorn.ctl

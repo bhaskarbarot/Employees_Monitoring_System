@@ -1303,32 +1303,29 @@ class OllamaVerifier(threading.Thread):
 
     QUESTIONS = {
         "PHONE_HAND": (
-            "This is a CEILING/OVERHEAD security camera looking DOWN at an office. "
-            "Look at the person inside the RED or ORANGE bounding box. "
-            "Is that specific person CLEARLY holding a rectangular mobile phone "
-            "in their hand? Look for a small rectangular device in their hand. "
-            "Ignore people in GREEN boxes. "
-            "Answer YES only if you can clearly see a phone in the highlighted person's hand. "
-            "Answer NO if it is a mouse, keyboard, pen, or if no phone is visible. "
-            "Reply with only YES or NO."
+            "Overhead office security camera (ceiling view, looking down). "
+            "There is a person with a RED or ORANGE bounding box drawn around them. "
+            "Task: Is that specific person holding a mobile phone in their hand RIGHT NOW?\n"
+            "- YES if you see a small rectangular device (phone/smartphone) in their hand\n"
+            "- NO if their hand holds a mouse, pen, wallet, cup, or nothing visible\n"
+            "- NO if you are unsure — only YES when clearly visible\n"
+            "Ignore people in GREEN boxes. Reply with only YES or NO."
         ),
         "PHONE_EAR": (
-            "This is a CEILING/OVERHEAD security camera looking DOWN at an office. "
-            "Look at the person inside the RED or ORANGE bounding box. "
-            "Is that specific person CLEARLY holding a mobile phone to their ear "
-            "while talking? From overhead, this looks like a hand raised to the side "
-            "of the head with a small rectangle visible. "
-            "Do NOT answer YES if the person is just touching their face, "
-            "scratching their head, or adjusting glasses. "
-            "Answer YES only if a phone is clearly visible near their ear. "
-            "Reply with only YES or NO."
+            "Overhead office security camera (ceiling view, looking down). "
+            "There is a person with a RED or ORANGE bounding box drawn around them. "
+            "Task: Is that person holding a mobile phone to their ear/head making a phone call?\n"
+            "- YES if their hand is raised to the side of their head with a phone\n"
+            "- NO if they are just touching their face, scratching, or adjusting hair/glasses\n"
+            "- NO if you cannot clearly see a phone near their head\n"
+            "Ignore people in GREEN boxes. Reply with only YES or NO."
         ),
         "SLEEPING": (
-            "This is a CEILING/OVERHEAD security camera looking DOWN at an office. "
-            "Look at the person inside the RED bounding box. "
-            "Is that person's head resting DOWN on the desk or their arms, "
-            "appearing to be asleep? From overhead, a sleeping person's head "
-            "will be very close to the desk surface. "
+            "Overhead office security camera (ceiling view, looking down). "
+            "There is a person with a RED bounding box drawn around them. "
+            "Task: Is that person's head resting DOWN on the desk surface, appearing to be asleep?\n"
+            "- YES if their head is clearly down on the desk or arms (asleep/unconscious posture)\n"
+            "- NO if they are just leaning forward, typing, reading, or looking down\n"
             "Reply with only YES or NO."
         ),
     }
@@ -1340,13 +1337,52 @@ class OllamaVerifier(threading.Thread):
         self._log_file = Path("logs/logs.txt")
         self._train_dir = Path("training_data")
 
+    # Vision-capable models in priority order (Qwen2.5-VL is best)
+    _VISION_MODELS = [
+        'qwen2.5vl', 'qwen2-vl', 'qwen2.5-vl',  # Qwen2.5-VL — best accuracy
+        'llava',                                    # LLaVA — widely used
+        'bakllava', 'llava-llama3', 'llava-phi3',  # LLaVA variants
+        'moondream', 'moondream2',                  # Lightweight option
+        'minicpm-v', 'cogvlm',                      # Other vision models
+    ]
+
+    def _find_vision_model(self) -> Optional[str]:
+        """Find best available vision model from Ollama. Prefers Qwen2.5-VL."""
+        import requests
+        configured = os.getenv("OLLAMA_MODEL", "llava:latest")
+        try:
+            r = requests.get("http://localhost:11434/api/tags", timeout=5)
+            if not r.ok:
+                print("  [OllamaVerifier] Ollama not responding at :11434")
+                return None
+            available = [m['name'] for m in r.json().get('models', [])]
+            # Try configured model first
+            if any(configured.split(':')[0].lower() in a.lower() for a in available):
+                return next(a for a in available
+                            if configured.split(':')[0].lower() in a.lower())
+            # Try vision models in priority order
+            for vm in self._VISION_MODELS:
+                match = next((a for a in available if vm in a.lower()), None)
+                if match:
+                    print(f"  [OllamaVerifier] auto-selected vision model: {match}")
+                    return match
+            print("  [OllamaVerifier] No vision model found in Ollama.")
+            print("  [OllamaVerifier] Install one: ollama pull qwen2.5vl:7b")
+            print("  [OllamaVerifier]         or: ollama pull llava")
+            return None
+        except Exception as e:
+            print(f"  [OllamaVerifier] Cannot reach Ollama: {e}")
+            return None
+
     def run(self):
         from dotenv import load_dotenv; load_dotenv()
-        if os.getenv("USE_OLLAMA", "false").lower() != "true":
-            print("  [OllamaVerifier] disabled (USE_OLLAMA=false in .env)")
+        if os.getenv("USE_OLLAMA", "false").lower() == "false":
+            print("  [OllamaVerifier] disabled (set USE_OLLAMA=true in .env to enable)")
             return
-        model = os.getenv("OLLAMA_MODEL", "llava:latest")
-        print(f"  [OllamaVerifier] started — using {model}")
+        model = self._find_vision_model()
+        if not model:
+            return
+        print(f"  [OllamaVerifier] started — model={model} — scanning photos every 8s")
 
         while _running:
             try: self._scan(model)
@@ -1569,12 +1605,14 @@ class BehaviorEngine(threading.Thread):
                             )
                             if not recent_same:
                                 # ── NEW SESSION: save IMMEDIATE photo ────────
+                                # Set session_ptype BEFORE annotate_cam so the
+                                # box label uses the correct type (EAR vs HAND).
                                 t.phone_session_start = now
-                                t.phone_session_ptype = ptype
+                                t.phone_session_ptype = ptype   # ← FIRST
                                 t.phone_session_saved = now
-                                ann_first = annotate_cam(self.cam)
+                                ann_first = annotate_cam(self.cam)  # sees ptype above
                                 ann_first = _force_red_box(ann_first, t, ptype,
-                                                            self.cam.state.get_frame())
+                                                           self.cam.state.get_frame())
                                 t.phone_session_ann = ann_first
                                 self._fire(event, ann_first, self._det(t, "phone"),
                                            0, self.cam.cam_id, self.cam.name)
@@ -1825,8 +1863,10 @@ def annotate_cam(cam, target_w=None, target_h=None):
         if ts is None:
             color, label = _G, "OK"
         elif ts.ev_phone.confirmed or tid in active_phone_tids:
-            # Use live phone detection OR confirmed evidence — whichever is current
-            ptype = ts.phone_type or ('ear' if ts.phone_on_ear else 'hand')
+            # session_ptype is authoritative once a session starts;
+            # fall back to live type, then pose signal
+            ptype = (ts.phone_session_ptype or ts.phone_type or
+                     ('ear' if ts.phone_on_ear else 'hand'))
             if ptype == 'ear': color, label = (0,60,255), "PHONE ON EAR"
             else:              color, label = _R,          "PHONE IN HAND"
         elif ts.ev_sleep.confirmed:

@@ -471,6 +471,16 @@ def api_alerts():
     return jsonify(_cached("alerts", 4.0, _compute))
 
 
+@app.route("/api/photos/all")
+def api_photos_all():
+    def _compute():
+        if not PHOTOS_DIR.exists(): return []
+        photos = sorted(PHOTOS_DIR.glob("Cam*.jpg"),
+                        key=lambda x: x.stat().st_mtime, reverse=True)[:200]
+        return [p for p in [_parse_photo(x) for x in photos] if p]
+    return jsonify(_cached("photos_all", 3.0, _compute))
+
+
 @app.route("/api/camera/<name>/alerts")
 def api_camera_alerts(name):
     cam = next((c for c in CAMS if c["name"].upper() == name.upper()), None)
@@ -637,6 +647,30 @@ body{background:#0b0b0b;color:#ddd;font-family:'Segoe UI',system-ui,sans-serif;
 .m-dur{font-size:11px;color:#2ecc71;font-weight:600;margin-top:2px}
 .m-times{font-size:10px;color:#444;margin-top:2px}
 
+/* Photos gallery overlay */
+#photos-ov{display:none;position:fixed;inset:0;background:#080808;z-index:700;flex-direction:column}
+#photos-ov.open{display:flex}
+.ph-hdr{background:#121212;border-bottom:1px solid #222;padding:0 16px;height:50px;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.ph-hdr-l{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700;color:#f0f0f0}
+#ph-count{font-size:12px;color:#555}
+.ph-close{background:none;border:none;color:#666;font-size:22px;cursor:pointer;
+  padding:4px 8px;border-radius:4px}
+.ph-close:hover{color:#fff;background:#2a2a2a}
+#ph-wrap{flex:1;overflow-y:auto;padding:12px}
+#ph-wrap::-webkit-scrollbar{width:4px}
+#ph-wrap::-webkit-scrollbar-thumb{background:#2a2a2a}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.ph-card{background:#141414;border:1px solid #1e1e1e;border-radius:7px;
+  overflow:hidden;cursor:pointer;transition:border-color .15s,transform .1s}
+.ph-card:hover{border-color:#3a3a3a;transform:scale(1.02)}
+.ph-card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;background:#080808}
+.ph-info{padding:6px 9px}
+.ph-ev{font-size:11px;font-weight:700;color:#e74c3c}
+.ph-ev.SL{color:#9b59b6}
+.ph-meta{font-size:10px;color:#444;margin-top:2px}
+.ph-meta b{color:#666}
+
 /* Photo lightbox */
 #lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.95);
   z-index:1000;align-items:center;justify-content:center;flex-direction:column;gap:12px}
@@ -659,6 +693,7 @@ body{background:#0b0b0b;color:#ddd;font-family:'Segoe UI',system-ui,sans-serif;
   <div class="hdr-r">
     <div class="pill g">Live <b id="live-n">0</b></div>
     <div class="pill r">Alerts <b id="alert-n">0</b></div>
+    <button onclick="openPhotos()" style="background:#1a1a3a;border:1px solid #2a2a6a;color:#7a9fd9;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer">📸 Photos</button>
     <a href="/annotate" style="background:#1a3a1a;border:1px solid #2a5a2a;color:#2ecc71;padding:4px 14px;border-radius:20px;font-size:12px;text-decoration:none;font-weight:600">📚 Training</a>
     <div id="clock">--:--:--</div>
   </div>
@@ -706,6 +741,15 @@ body{background:#0b0b0b;color:#ddd;font-family:'Segoe UI',system-ui,sans-serif;
       </div>
     </div>
   </div>
+</div>
+
+<!-- Photos gallery overlay -->
+<div id="photos-ov">
+  <div class="ph-hdr">
+    <div class="ph-hdr-l">📸 All Alert Photos <span id="ph-count"></span></div>
+    <button class="ph-close" onclick="closePhotos()">✕</button>
+  </div>
+  <div id="ph-wrap"><div class="ph-grid" id="ph-grid"></div></div>
 </div>
 
 <!-- Lightbox -->
@@ -932,7 +976,44 @@ document.getElementById('lb').addEventListener('click', e => {
 document.getElementById('cam-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('cam-modal')) closeModal()
 })
-document.addEventListener('keydown', e => { if (e.key==='Escape') { closeLb(); closeModal() } })
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') { closeLb(); closeModal(); closePhotos() }
+})
+
+/* ── Photos gallery ─────────────────────────────── */
+let _phTimer = null
+
+function openPhotos() {
+  document.getElementById('photos-ov').classList.add('open')
+  _fetchPhotos()
+  _phTimer = setInterval(_fetchPhotos, 5000)
+}
+
+function closePhotos() {
+  document.getElementById('photos-ov').classList.remove('open')
+  clearInterval(_phTimer); _phTimer = null
+}
+
+function _fetchPhotos() {
+  fetch('/api/photos/all').then(r => r.json()).then(photos => {
+    const grid = document.getElementById('ph-grid')
+    document.getElementById('ph-count').textContent =
+      photos.length ? ` — ${photos.length} photo${photos.length>1?'s':''}` : ''
+    if (!photos.length) {
+      grid.innerHTML = '<div style="padding:40px;color:#333;font-size:14px;text-align:center;grid-column:1/-1">No alert photos yet</div>'
+      return
+    }
+    const ec = ev => ev.toUpperCase().includes('SLEEP') ? 'SL' : ''
+    grid.innerHTML = photos.map(p => `
+      <div class="ph-card" onclick="openLb('${p.url}','${p.event.replace(/_/g,' ')}','${p.time}','','')">
+        <img src="${p.url}?_=${p.mtime|0}" onerror="this.style.opacity=.3" loading="lazy" alt="">
+        <div class="ph-info">
+          <div class="ph-ev ${ec(p.event)}">${p.event.replace(/_/g,' ')}</div>
+          <div class="ph-meta"><b>${p.cam}</b>&nbsp; ${p.time}</div>
+        </div>
+      </div>`).join('')
+  }).catch(() => {})
+}
 </script>
 </body>
 </html>"""

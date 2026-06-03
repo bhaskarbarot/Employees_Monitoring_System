@@ -74,9 +74,12 @@ export QT_LOGGING_RULES="*.warning=false"
 export OPENCV_FFMPEG_CAPTURE_OPTIONS="rtsp_transport;tcp|loglevel;error"  # hide HEVC warnings
 export HEADLESS=true   # no local display window — use web UI at :5000
 
-# Clear log files — fresh start, no leftover output
+# Clear all logs and alert photos — fresh start each run
 > logs/monitor.log
 > logs/web_ui.log
+> logs/logs.txt
+rm -f logs/photos/*.jpg 2>/dev/null
+echo -e "${GREEN}  ✓ Logs and photos cleared${NC}"
 
 # Show custom model status
 CUSTOM_MODEL="custom_model/weights/best.pt"
@@ -146,19 +149,46 @@ echo ""
 # ────────────────────────────────────────────────────────
 # LIVE LOG — clean output only
 # ────────────────────────────────────────────────────────
+_cleaned=0
 cleanup() {
+    [ "$_cleaned" -eq 1 ] && exit 0
+    _cleaned=1
     echo ""
     echo -e "${YELLOW}  Stopping...${NC}"
-    [ -f "$PID_MON" ] && kill $(cat "$PID_MON") 2>/dev/null && rm -f "$PID_MON"
-    [ -f "$PID_WEB" ] && kill $(cat "$PID_WEB") 2>/dev/null && rm -f "$PID_WEB"
+    # Stop the log tail first
+    kill "$TAIL_PID" 2>/dev/null
+
+    # Kill monitor — SIGKILL immediately (it handles SIGINT on its own from terminal)
+    if [ -f "$PID_MON" ]; then
+        MON=$(cat "$PID_MON")
+        kill -9 "$MON" 2>/dev/null
+        pkill -9 -P "$MON" 2>/dev/null   # kill any children
+        rm -f "$PID_MON"
+    fi
+
+    # Kill web UI — kill gunicorn master + all worker children
+    if [ -f "$PID_WEB" ]; then
+        WEB=$(cat "$PID_WEB")
+        pkill -9 -P "$WEB" 2>/dev/null   # workers first
+        kill -9 "$WEB" 2>/dev/null        # then master
+        rm -f "$PID_WEB"
+    fi
+
+    # Belt-and-suspenders: kill anything still referencing this project
     pkill -9 -f "${PROJ}/monitor.py" 2>/dev/null
+    pkill -9 -f "gunicorn.*web_ui"   2>/dev/null
     pkill -9 -f "${PROJ}/web_ui.py"  2>/dev/null
+
+    # Release port 5000 in case anything hung
     fuser -k 5000/tcp 2>/dev/null
+
+    sleep 0.5
     echo -e "${GREEN}  ✓ All stopped${NC}"
     echo ""
     exit 0
 }
-trap cleanup SIGINT SIGTERM
+# Trap Ctrl+C, kill signal, AND terminal close (SIGHUP)
+trap cleanup SIGINT SIGTERM SIGHUP
 
 echo -e "${YELLOW}  Live output (Ctrl+C to stop):${NC}"
 echo -e "  ─────────────────────────────────────────────────"
