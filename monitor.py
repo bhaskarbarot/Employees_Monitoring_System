@@ -198,7 +198,7 @@ class TrackState:
         self.left_wrist  = None   # (x, y, conf)
         self.right_wrist = None   # (x, y, conf)
         # Legacy frame-ratio accumulators (v3 — kept for backward compat)
-        self.ev_phone = EvidenceAcc(window=10, min_ratio=0.30, min_frames=3)
+        self.ev_phone = EvidenceAcc(window=10, min_ratio=0.20, min_frames=3)
         self.ev_sleep = EvidenceAcc(window=12, min_ratio=0.75)
 
         # v4 probabilistic fusion engines (active if fusion.py imported)
@@ -651,10 +651,11 @@ def _valid_phone(phone_bbox, person_bbox, frame_h, frame_w):
     if pw <= 0 or ph <= 0: return False
     aspect = ph / pw
 
-    # Portrait (tall) OR landscape (wide) — v1 rejected landscape phones
-    portrait  = 1.3 <= aspect <= 4.5   # tightened: exclude very square objects
-    landscape = 0.22 <= aspect <= 0.77  # tightened: exclude very square objects
-    if not (portrait or landscape): return False
+    # Accept any phone-like aspect ratio: landscape, square, or portrait.
+    # Previous tightened ranges (0.22-0.77 OR 1.3-4.5) had a gap 0.77-1.3 that
+    # rejected real phone detections when COCO drew a square bbox (aspect≈1.0).
+    # Only reject extreme slivers (<0.15) or extremely wide panels (>5.0).
+    if not (0.15 <= aspect <= 5.0): return False
 
     area = ph * pw; f_area = frame_h * frame_w
     if area < f_area * 0.0003: return False   # too small (mouse/pen)
@@ -679,7 +680,7 @@ class CameraSession:
         self.cfg     = cfg
         self.state   = CameraState()
         self.tracks  : Dict[int, "TrackState"] = {}
-        self.tracks_lock = threading.Lock()
+        self.tracks_lock = threading.RLock()  # RLock: annotate_cam re-acquires this inside BehaviorEngine's lock hold
 
         # ── Per-camera calibration profile (Phase 5) ─────────────────────────
         # Profile keys override global .env defaults for this specific camera.
@@ -908,10 +909,11 @@ class BatchDetectWorker(threading.Thread):
         phones_by_idx     = [[] for _ in cams]
         phone_tids_by_idx = [set() for _ in cams]
 
-        def _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, ptype, skip_valid=False):
+        def _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, ptype, skip_valid=False, min_conf=None):
             """Add a validated phone detection to the results."""
             pconf = float(pb.conf[0])
-            if pconf < CONF_PHONE: return
+            threshold = min_conf if min_conf is not None else CONF_PHONE
+            if pconf < threshold: return
             px1, py1, px2, py2 = map(int, pb.xyxy[0])
             full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
             # Custom model: skip _valid_phone — it already classifies type correctly
@@ -964,7 +966,7 @@ class BatchDetectWorker(threading.Thread):
                 px1, py1, px2, py2 = map(int, pb.xyxy[0])
                 full_bbox = (ox+px1, oy+py1, ox+px2, oy+py2)
                 ptype = _classify_phone(full_bbox, pe['bbox'], ear_sig, lw, rw)
-                _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, ptype)
+                _add_phone(cam_idx, pe, ox, oy, fh, fw, pb, ptype, min_conf=0.25)
 
                 if ptype in ('hand', 'ear'):
                     phone_tids_by_idx[cam_idx].add(pe['track_id'])
@@ -1762,7 +1764,13 @@ def camera_reader(cam: "CameraSession", startup_delay: float = 0) -> None:
                 continue
 
             consecutive_fails = 0
-            cam.state.set_frame(frame)
+            # Downscale to 1280×720 before storing — all workers use this space.
+            # At 2560×1440, person crops fed to custom model (imgsz=320) are 600×700+
+            # px and phones become microscopic. At 1280×720 crops are ~300×350 px
+            # and phones are clearly visible at imgsz=320.
+            _h0, _w0 = frame.shape[:2]
+            proc = cv2.resize(frame, (1280, 720)) if _w0 > 1280 else frame
+            cam.state.set_frame(proc)
             cam.record_frame()   # Phase 6: update FPS metric
 
             # Phase 1: feed hard-negative miner (sampled; checks alert state internally)
@@ -1776,7 +1784,7 @@ def camera_reader(cam: "CameraSession", startup_delay: float = 0) -> None:
             _frame_count += 1
             if _frame_count % 3 == 0:
                 try:
-                    shared = cv2.resize(frame, (640, 360))
+                    shared = cv2.resize(proc, (640, 360))
                     tmp = SHARED_FRAMES_DIR / f"{cam.name}.tmp.jpg"
                     cv2.imwrite(str(tmp), shared, [cv2.IMWRITE_JPEG_QUALITY, 72])
                     tmp.rename(SHARED_FRAMES_DIR / f"{cam.name}.jpg")
