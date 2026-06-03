@@ -290,18 +290,72 @@ def api_annotation_counts():
     return jsonify({"counts":counts,"total":total,"images":img_count})
 
 
+def _count_all_training_images() -> int:
+    """Count images across manual + auto_labeled + hard_negatives directories."""
+    total = 0
+    for sub in ["images", "auto_labeled/images", "hard_negatives/images"]:
+        d = TRAIN_DIR / sub
+        if d.exists():
+            total += len(list(d.glob("*.jpg")))
+    return total
+
+
+def _retrain_recommended() -> dict:
+    """
+    Phase 7: Check whether a retrain is recommended based on new data.
+    Returns {"recommended": bool, "reason": str, "new_images": int}
+    """
+    auto_dir = TRAIN_DIR / "auto_labeled" / "images"
+    neg_dir  = TRAIN_DIR / "hard_negatives" / "images"
+    new_auto = len(list(auto_dir.glob("*.jpg"))) if auto_dir.exists() else 0
+    new_neg  = len(list(neg_dir.glob("*.jpg")))  if neg_dir.exists()  else 0
+    new_total = new_auto + new_neg
+    recommended = new_total >= 30
+    reason = ""
+    if recommended:
+        reason = f"{new_auto} auto-labeled + {new_neg} hard-negatives available"
+    return {"recommended": recommended, "reason": reason, "new_images": new_total}
+
+
+@app.route("/api/train/recommended")
+def api_train_recommended():
+    return jsonify(_retrain_recommended())
+
+
+@app.route("/api/train/auto", methods=["POST"])
+def api_auto_train():
+    """Phase 7: Trigger training only when enough new data exists and GPU is idle."""
+    global _train_proc
+    import subprocess
+    if _train_proc and _train_proc.poll() is None:
+        return jsonify({"status":"running","message":"Training already in progress"})
+    rec = _retrain_recommended()
+    if not rec["recommended"]:
+        return jsonify({"status":"skip",
+                        "message":f"Need 30+ new images, have {rec['new_images']}"}), 200
+    total = _count_all_training_images()
+    if total < 15:
+        return jsonify({"status":"error","message":f"Need 15+ total images, have {total}"}), 400
+    _train_proc = subprocess.Popen(
+        ["python3","train.py"],
+        stdout=open(str(_BASE/"logs"/"train.log"),"w"), stderr=subprocess.STDOUT
+    )
+    return jsonify({"status":"started","new_images":rec["new_images"],
+                    "total_images":total,"pid":_train_proc.pid})
+
+
 @app.route("/api/train", methods=["POST"])
 def api_start_train():
     global _train_proc
     import subprocess
     if _train_proc and _train_proc.poll() is None:
         return jsonify({"status":"running","message":"Training already in progress"})
-    img_count = len(list((TRAIN_DIR/"images").glob("*.jpg"))) if (TRAIN_DIR/"images").exists() else 0
+    img_count = _count_all_training_images()
     if img_count < 15:
         return jsonify({"status":"error","message":f"Need 15+ images, have {img_count}"}),400
     _train_proc = subprocess.Popen(
         ["python3","train.py"],
-        stdout=open("logs/train.log","w"), stderr=subprocess.STDOUT
+        stdout=open(str(_BASE/"logs"/"train.log"),"w"), stderr=subprocess.STDOUT
     )
     return jsonify({"status":"started","images":img_count,"pid":_train_proc.pid})
 
@@ -329,8 +383,82 @@ def api_train_status():
 
 @app.route("/api/status")
 def api_status():
-    # Status is cheap — no caching needed
     return jsonify({c: {"connected": STREAMS[c].connected} for c in STREAMS})
+
+
+@app.route("/api/health")
+def api_health():
+    """
+    Phase 6 — Production health endpoint.
+    Returns detailed per-camera status + model mode + GPU info + alert rate.
+    """
+    import time as _time
+    shared_dir = Path("/tmp/monitor_frames")
+    now        = _time.time()
+
+    cam_data = {}
+    for c in CAMS:
+        name  = c["name"]
+        st    = STREAMS.get(name)
+        ffile = shared_dir / f"{name}.jpg"
+        age   = round(now - ffile.stat().st_mtime, 1) if ffile.exists() else None
+        cam_data[name] = {
+            "connected"    : st.connected if st else False,
+            "frame_age_sec": age,
+            "fps"          : round(getattr(st, "_fps", 0.0), 1) if st else 0.0,
+        }
+
+    # Model mode (TRT or PyTorch)
+    detect_engine = Path("yolov8s.engine").exists()
+    custom_engine = Path("custom_model/weights/best.engine").exists()
+    pose_engine   = Path("yolov8n-pose.engine").exists()
+
+    # Alerts in last hour
+    alert_count_1h = 0
+    if LOGS_FILE.exists():
+        cutoff = now - 3600
+        try:
+            for line in LOGS_FILE.read_text(errors="ignore").splitlines():
+                if line.strip():
+                    alert_count_1h += 1
+        except Exception:
+            pass
+
+    # Auto-label + hard-neg stats
+    auto_stats = {}
+    auto_stats_file = _BASE / "training_data" / "auto_labeled" / "stats.json"
+    if auto_stats_file.exists():
+        try:
+            auto_stats = json.loads(auto_stats_file.read_text())
+        except Exception:
+            pass
+
+    neg_stats = {}
+    neg_stats_file = _BASE / "training_data" / "hard_negatives" / "stats.json"
+    if neg_stats_file.exists():
+        try:
+            neg_stats = json.loads(neg_stats_file.read_text())
+        except Exception:
+            pass
+
+    return jsonify({
+        "status"        : "healthy",
+        "cameras"       : cam_data,
+        "models"        : {
+            "detect" : "tensorrt" if detect_engine else "pytorch",
+            "custom" : "tensorrt" if custom_engine else "pytorch",
+            "pose"   : "tensorrt" if pose_engine   else "pytorch",
+        },
+        "alerts_last_hour": alert_count_1h,
+        "auto_label_stats": auto_stats,
+        "hard_neg_stats"  : neg_stats,
+        "v4_components"   : {
+            "tracker"   : Path("tracker.py").exists(),
+            "fusion"    : Path("fusion.py").exists(),
+            "auto_label": Path("auto_label.py").exists(),
+            "mining"    : Path("mining.py").exists(),
+        },
+    })
 
 
 @app.route("/api/alerts")

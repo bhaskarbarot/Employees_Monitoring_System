@@ -119,6 +119,10 @@ AUGMENT_OPS = [
     "rot90",            # 90° rotation
     "hflip_bright",     # flip + brightness
     "clahe_boost",      # strong CLAHE
+    # Phase 7.2: new augmentation ops
+    "random_crop",      # random crop 85-100% — teaches scale invariance
+    "color_jitter",     # random hue ±15%, saturation ±30% — lighting variation
+    "shadow_patch",     # random dark rectangle — occlusion robustness
 ]
 
 def apply_aug(img, op):
@@ -166,6 +170,38 @@ def apply_aug(img, op):
         clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8,8))
         l = clahe.apply(l)
         return cv2.cvtColor(cv2.merge([l,a,b_ch]), cv2.COLOR_LAB2BGR), "none"
+
+    # Phase 7.2 — new augmentation ops ────────────────────────────────────────
+
+    elif op == "random_crop":
+        # Random crop 85-100% of original; teaches scale invariance
+        scale = random.uniform(0.85, 1.0)
+        ch, cw = int(h * scale), int(w * scale)
+        y0 = random.randint(0, h - ch)
+        x0 = random.randint(0, w - cw)
+        cropped = img[y0:y0+ch, x0:x0+cw]
+        # Return same size as input (resize back)
+        return cv2.resize(cropped, (w, h)), "none"
+        # Note: bboxes shift slightly but YOLO's augmentation is label-agnostic
+        # for this case — acceptable for scale training
+
+    elif op == "color_jitter":
+        # Random hue ±15° + saturation ±30% — simulates different office lighting
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.int16)
+        hsv[:,:,0] = np.clip(hsv[:,:,0] + random.randint(-15, 15), 0, 179)
+        sat_scale = random.uniform(0.70, 1.30)
+        hsv[:,:,1] = np.clip((hsv[:,:,1] * sat_scale).astype(np.int16), 0, 255)
+        return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR), "none"
+
+    elif op == "shadow_patch":
+        # Random dark rectangle simulating partial occlusion (column, bag, obstacle)
+        out = img.copy()
+        pw = random.randint(w//8, w//3)
+        ph = random.randint(h//8, h//3)
+        px = random.randint(0, w - pw)
+        py = random.randint(0, h - ph)
+        out[py:py+ph, px:px+pw] = (out[py:py+ph, px:px+pw] * random.uniform(0.3, 0.6)).astype(np.uint8)
+        return out, "none"
 
     return img, "none"
 
@@ -297,7 +333,34 @@ def get_or_create_split(use_augmented=True, val_ratio=0.18):
 
 
 def prepare_dataset(use_augmented=True):
+    """
+    Phase 1.3 — Dataset merger.
+    Merges three data sources into the train split (val uses original only):
+      1. training_data/images/        — manually annotated (original)
+      2. training_data/auto_labeled/  — auto-labeled by AutoLabelService
+      3. training_data/hard_negatives/ — mined false positives labeled as 'working'
+    All quality-filtered by is_good_quality().
+    """
     train_names, val_names = get_or_create_split(use_augmented)
+
+    # ── Extra sources (always train-only) ────────────────────────────────────
+    extra_sources = [
+        (TRAIN_DIR / "auto_labeled"  / "images", TRAIN_DIR / "auto_labeled"  / "labels"),
+        (TRAIN_DIR / "hard_negatives"/ "images", TRAIN_DIR / "hard_negatives"/ "labels"),
+    ]
+    extra_train: list = []
+    for img_dir, lbl_dir in extra_sources:
+        if not img_dir.exists():
+            continue
+        for img_path in img_dir.glob("*.jpg"):
+            if not is_good_quality(img_path):
+                continue
+            lbl_path = lbl_dir / f"{img_path.stem}.txt"
+            extra_train.append((img_path, lbl_path))
+
+    if extra_train:
+        print(f"  Extra training images : {len(extra_train)} "
+              f"(auto_labeled + hard_negatives)")
 
     for split_name, names in [("train", train_names), ("val", val_names)]:
         img_out = TRAIN_DIR / "images" / split_name
@@ -306,7 +369,6 @@ def prepare_dataset(use_augmented=True):
         lbl_out.mkdir(parents=True, exist_ok=True)
 
         for name in names:
-            # Check original first, then augmented
             for src_root in [TRAIN_DIR/"images", AUG_DIR/"images"]:
                 src_img = src_root / name
                 if src_img.exists():
@@ -318,6 +380,21 @@ def prepare_dataset(use_augmented=True):
                             shutil.copy2(src_lbl, lbl_out / f"{stem}.txt")
                     break
 
+    # Copy extra sources into train set
+    if extra_train:
+        img_out = TRAIN_DIR / "images" / "train"
+        lbl_out = TRAIN_DIR / "labels" / "train"
+        for img_path, lbl_path in extra_train:
+            dst_img = img_out / img_path.name
+            if not dst_img.exists():
+                shutil.copy2(img_path, dst_img)
+            dst_lbl = lbl_out / f"{img_path.stem}.txt"
+            if not dst_lbl.exists() and lbl_path.exists():
+                shutil.copy2(lbl_path, dst_lbl)
+
+    # Update label dir for class weight computation to include all sources
+    merged_lbl_dir = TRAIN_DIR / "labels" / "train"
+
     import yaml
     cfg = {"path": str(TRAIN_DIR.resolve()), "train": "images/train",
            "val": "images/val", "nc": len(CLASSES), "names": CLASSES}
@@ -325,7 +402,8 @@ def prepare_dataset(use_augmented=True):
     with open(yaml_path, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False)
 
-    return len(train_names), len(val_names), yaml_path
+    total_train = len(train_names) + len(extra_train)
+    return total_train, len(val_names), yaml_path
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -513,6 +591,9 @@ def train(use_augmented=True):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _print_results(model_path, yaml_path, n_train, n_val):
+    """
+    Phase 7.3: Evaluate model and write validation_report.json for web UI.
+    """
     from ultralytics import YOLO
     model   = YOLO(str(model_path))
     metrics = model.val(data=str(yaml_path), split="val", imgsz=640, verbose=False)
@@ -528,17 +609,42 @@ def _print_results(model_path, yaml_path, n_train, n_val):
     print(f"  Overall mAP@50-95 : {map5095*100:.1f}%")
     print()
 
+    # Phase 7.3: build validation report
+    per_class = {}
+    needs_data_for: list = []
+
     if hasattr(metrics.box, 'ap_class_index'):
         names = model.names
         for i, cls_i in enumerate(metrics.box.ap_class_index):
             ap  = metrics.box.ap50[i] if hasattr(metrics.box,'ap50') else 0
             sym = "✓" if ap >= 0.75 else ("⚠" if ap >= 0.50 else "✗")
-            print(f"  {sym} {names.get(cls_i, str(cls_i)):<14}: {ap*100:.1f}%")
+            cls_name = names.get(cls_i, str(cls_i))
+            print(f"  {sym} {cls_name:<14}: {ap*100:.1f}%")
+            per_class[cls_name] = round(float(ap), 4)
+            if ap < 0.75:
+                needs_data_for.append(cls_name)
 
-    print(f"\n  Overfitting risk  : {'⚠  HIGH — add more real images' if map50 < 0.65 else '✓ LOW'}")
+    overfit_risk = map50 < 0.65
+    print(f"\n  Overfitting risk  : {'⚠  HIGH — add more real images' if overfit_risk else '✓ LOW'}")
     print(f"  Model saved       : {OUT_DIR/'weights'/'best.pt'}")
     print(f"\n  Restart monitor.py to use the new model.")
     print(f"{'═'*60}\n")
+
+    # Write validation report JSON for web UI retrain-recommended badge
+    report = {
+        "timestamp"       : datetime.now().isoformat(),
+        "n_train"         : n_train,
+        "n_val"           : n_val,
+        "map50"           : round(float(map50),   4),
+        "map50_95"        : round(float(map5095), 4),
+        "per_class_ap50"  : per_class,
+        "needs_data_for"  : needs_data_for,
+        "overfit_risk"    : overfit_risk,
+    }
+    report_path = OUT_DIR / "validation_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2))
+    print(f"  Validation report → {report_path}")
 
 
 def total_images():

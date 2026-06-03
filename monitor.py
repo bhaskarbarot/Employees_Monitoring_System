@@ -18,7 +18,7 @@ import os, time, signal, threading, json, urllib.parse, math
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import cv2, torch, numpy as np
 from dotenv import load_dotenv
@@ -31,6 +31,41 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 _log = logging.getLogger("monitor")
+
+# ── v4 component imports (lazy — failures degrade gracefully) ────────────────
+try:
+    from tracker import KalmanTracker as _KalmanTrackerV4, DeskZoneReID
+    _TRACKER_V4 = True
+    _log.info("[v4] tracker.py loaded — ByteTrack-hybrid + DeskZoneReID active")
+except ImportError:
+    _TRACKER_V4 = False
+    _log.info("[v4] tracker.py not found — using built-in KalmanTracker")
+
+try:
+    from fusion import PhoneFusion, SleepFusion
+    _FUSION_V4 = True
+    _log.info("[v4] fusion.py loaded — probabilistic FusionEngine active")
+except ImportError:
+    _FUSION_V4 = False
+    _log.info("[v4] fusion.py not found — using EvidenceAcc")
+
+try:
+    from auto_label import AutoLabelService
+    _AUTOLABEL_V4 = True
+except ImportError:
+    _AUTOLABEL_V4 = False
+
+try:
+    from mining import HardNegativeMiner
+    _MINING_V4 = True
+except ImportError:
+    _MINING_V4 = False
+
+# Global hard-negative miner (shared across cameras)
+_hard_neg_miner: Optional["HardNegativeMiner"] = None
+
+# Global desk-zone re-ID registry (shared across cameras)
+_desk_reid: Optional["DeskZoneReID"] = None
 
 load_dotenv()
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
@@ -50,7 +85,7 @@ SLEEP_THRESHOLD      = int(os.getenv("SLEEP_THRESHOLD_SEC",       "120"))
 # ── Session-based phone timing ─────────────────────────────────────────────
 # Photo saved when session ENDS (not on detection start)
 PHONE_SESSION_GRACE  = float(os.getenv("PHONE_SESSION_GRACE_SEC",  "6"))   # seconds without detection = session ended
-PHONE_SESSION_MIN    = float(os.getenv("PHONE_SESSION_MIN_SEC",    "20"))   # ignore sessions shorter than this
+PHONE_SESSION_MIN    = float(os.getenv("PHONE_SESSION_MIN_SEC",    "5"))    # save photos for sessions >= 5s (was 20s)
 PHONE_SESSION_MAX    = int(os.getenv("PHONE_SESSION_MAX_SEC",      "600"))  # periodic save every N sec during long sessions
 MOTION_STILL_SECS    = 60
 MOTION_THRESH        = 0.012
@@ -90,25 +125,34 @@ def _load_models():
     global _detect_model, _custom_model, _pose_model
     dummy = np.zeros((416, 416, 3), dtype="uint8")
 
-    # yolov8s.pt: ALWAYS used for person(COCO:0) + phone(COCO:67) detection
-    # Custom model cannot replace this — it uses different class IDs
-    _log.info("[Models] yolov8s.pt → %s  fp16=%s  (COCO person+phone)", DEVICE, HALF)
-    _detect_model = YOLO("yolov8s.pt")
-    _detect_model([dummy], verbose=False, device=DEVICE, imgsz=416, half=HALF)
+    def _load_one(pt_path: str, engine_path: str, imgsz: int, label: str):
+        """Load TensorRT engine if available, else fall back to .pt model."""
+        eng = Path(engine_path)
+        pt  = Path(pt_path)
+        if eng.exists() and DEVICE == "cuda":
+            try:
+                _log.info("[Models] %s → TensorRT engine (2-4× faster)", label)
+                m = YOLO(str(eng))
+                m([dummy], verbose=False, device=DEVICE, imgsz=imgsz)
+                return m
+            except Exception as exc:
+                _log.warning("[Models] TRT load failed (%s), using .pt: %s", label, exc)
+        _log.info("[Models] %s → PyTorch .pt  fp16=%s", label, HALF)
+        m = YOLO(str(pt))
+        m([dummy], verbose=False, device=DEVICE, imgsz=imgsz, half=HALF)
+        return m
 
-    # Custom model (if trained): runs on person CROPS for better classification
-    custom = Path("custom_model/weights/best.pt")
-    if custom.exists():
-        _log.info("[Models] %s → %s  (custom phone/sleep classifier)", custom, DEVICE)
-        _custom_model = YOLO(str(custom))
-        _custom_model([dummy], verbose=False, device=DEVICE, imgsz=320, half=HALF)
+    _detect_model = _load_one("yolov8s.pt", "yolov8s.engine", 416, "yolov8s (person+phone)")
+
+    custom_pt  = Path("custom_model/weights/best.pt")
+    custom_eng = Path("custom_model/weights/best.engine")
+    if custom_pt.exists():
+        _custom_model = _load_one(str(custom_pt), str(custom_eng), 320, "custom classifier")
         _log.info("[Models] *** Custom model active — better phone accuracy ***")
     else:
         _log.info("[Models] No custom model found — using COCO detection only")
 
-    _log.info("[Models] yolov8n-pose.pt → %s", DEVICE)
-    _pose_model = YOLO("yolov8n-pose.pt")
-    _pose_model([dummy], verbose=False, device=DEVICE, imgsz=416, half=HALF)
+    _pose_model = _load_one("yolov8n-pose.pt", "yolov8n-pose.engine", 416, "yolov8n-pose")
     _log.info("[Models] ready.")
 
 
@@ -153,11 +197,22 @@ class TrackState:
         # wrist keypoints — used by phone classifier to confirm hand is on phone
         self.left_wrist  = None   # (x, y, conf)
         self.right_wrist = None   # (x, y, conf)
-        # phone: 3 consecutive frames needed (~1.5s) — reduces flicker false positives
-        # Custom model from overhead gives inconsistent detections (20-38% conf)
-        # Window=10 frames (5s), need 3 positives = 30% ratio to confirm
+        # Legacy frame-ratio accumulators (v3 — kept for backward compat)
         self.ev_phone = EvidenceAcc(window=10, min_ratio=0.30, min_frames=3)
         self.ev_sleep = EvidenceAcc(window=12, min_ratio=0.75)
+
+        # v4 probabilistic fusion engines (active if fusion.py imported)
+        if _FUSION_V4:
+            self.phone_fusion = PhoneFusion()
+            self.sleep_fusion  = SleepFusion()
+        else:
+            self.phone_fusion = None
+            self.sleep_fusion  = None
+
+        # Alert cooldown tracking (v4 deduplication)
+        self.last_alert_end_time  : float = 0.0   # monotonic time of last session end
+        self.last_alert_event_type: Optional[str] = None
+
         self.sleep_start       = None  # when sleeping session started
         self.sleep_last_active = None  # last time sleep_ok was True
         self.sleep_session_ann = None  # annotated frame at sleep start
@@ -625,9 +680,37 @@ class CameraSession:
         self.state   = CameraState()
         self.tracks  : Dict[int, "TrackState"] = {}
         self.tracks_lock = threading.Lock()
-        # KalmanTracker: stable IDs via Kalman prediction + Hungarian assignment.
-        # max_age=45 matches old SimpleTracker's 'age < 45' policy exactly.
-        self.tracker = KalmanTracker(max_age=45, min_hits=1, iou_threshold=0.20)
+
+        # ── Per-camera calibration profile (Phase 5) ─────────────────────────
+        # Profile keys override global .env defaults for this specific camera.
+        # If 'profile' key absent from cameras.json → all globals used (backward compat).
+        prof = cfg.get('profile', {})
+        self.prof_motion_thresh    = float(prof.get('motion_thresh',    MOTION_THRESH))
+        self.prof_ear_thr_y_mult   = float(prof.get('ear_thr_y_mult',   0.06))
+        self.prof_ear_thr_x_mult   = float(prof.get('ear_thr_x_mult',   0.08))
+        self.prof_sleep_sh_mult    = float(prof.get('sleep_shoulder_mult', 0.4))
+        self.prof_expected_persons = int(prof.get('expected_persons',   -1))   # -1 = unknown
+
+        # ── Tracker (Phase 3.1 — v4 ByteTrack-hybrid, v3 KalmanTracker fallback) ──
+        if _TRACKER_V4:
+            self.tracker = _KalmanTrackerV4(max_age=45, min_hits=1, iou_threshold=0.20)
+        else:
+            self.tracker = KalmanTracker(max_age=45, min_hits=1, iou_threshold=0.20)
+
+        # ── Metrics for health endpoint (Phase 6) ─────────────────────────────
+        self.detect_latency_ms : float = 0.0   # last batch detect latency
+        self.fps               : float = 0.0   # approximate streaming fps
+        self._fps_ts           : float = time.time()
+        self._fps_count        : int   = 0
+
+    def record_frame(self) -> None:
+        """Update FPS counter on each new frame from camera_reader."""
+        self._fps_count += 1
+        elapsed = time.time() - self._fps_ts
+        if elapsed >= 5.0:
+            self.fps       = self._fps_count / elapsed
+            self._fps_count = 0
+            self._fps_ts   = time.time()
 
     def rtsp_url(self):
         c = self.cfg
@@ -651,9 +734,19 @@ class CameraSession:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class BatchDetectWorker(threading.Thread):
+    # Phase 4.2 — motion-gated inference
+    # Cameras where ALL tracked persons have motion_score below this threshold
+    # for N consecutive cycles are skipped to save GPU time.
+    _MOTION_GATE_THRESH = 0.008   # below = completely still
+    _MOTION_GATE_CYCLES = 1       # skip after this many consecutive still cycles
+    _FORCE_EVERY        = 3       # force full inference every N cycles regardless
+
     def __init__(self, cameras):
         super().__init__(daemon=True, name="BatchDetect")
         self.cameras = cameras
+        # Phase 4.2: per-camera still-cycle counter and forced-cycle counter
+        self._still_cycles : Dict[int, int] = {}   # cam_id → consecutive still cycles
+        self._force_counter: int            = 0
 
     def run(self):
         while _running:
@@ -661,27 +754,77 @@ class BatchDetectWorker(threading.Thread):
             pairs = [(c, c.state.get_frame()) for c in self.cameras]
             pairs = [(c, f) for c, f in pairs if f is not None]
             if pairs:
-                cams   = [c for c, f in pairs]
-                frames = [f for c, f in pairs]
-                try:
-                    self._detect_batch(cams, frames)
-                except Exception as exc:
-                    _log.error("[BatchDetect] %s", exc, exc_info=True)
+                # ── Phase 4.2: motion-gated camera selection ──────────────────
+                self._force_counter = (self._force_counter + 1) % self._FORCE_EVERY
+                force_all = (self._force_counter == 0)
+
+                active_pairs = []
+                for c, f in pairs:
+                    if force_all:
+                        active_pairs.append((c, f))
+                        self._still_cycles[c.cam_id] = 0
+                        continue
+                    # Check if ALL persons on this camera are completely still
+                    with c.tracks_lock:
+                        scores = [ts.motion_score for ts in c.tracks.values()]
+                    all_still = scores and all(s < self._MOTION_GATE_THRESH for s in scores)
+                    if all_still:
+                        cnt = self._still_cycles.get(c.cam_id, 0) + 1
+                        self._still_cycles[c.cam_id] = cnt
+                        if cnt > self._MOTION_GATE_CYCLES:
+                            # Skip this camera — persons haven't moved
+                            continue
+                    else:
+                        self._still_cycles[c.cam_id] = 0
+                    active_pairs.append((c, f))
+
+                if active_pairs:
+                    cams   = [c for c, f in active_pairs]
+                    frames = [f for c, f in active_pairs]
+                    t_infer = time.time()
+                    try:
+                        self._detect_batch(cams, frames)
+                        latency = (time.time() - t_infer) * 1000
+                        for cam in cams:
+                            cam.detect_latency_ms = latency / len(cams)
+                    except Exception as exc:
+                        _log.error("[BatchDetect] %s", exc, exc_info=True)
             time.sleep(max(0, 0.5 - (time.time() - t0)))
 
     def _detect_batch(self, cams, frames):
         now = time.time()
 
+        # ── Resolution normalisation (CRITICAL for high-res cameras) ─────────
+        # At 2560×1440, person crops fed to the custom model (imgsz=320) are
+        # 600×700+ pixels — phones vanish when letterboxed to 320. The model
+        # was trained on crops from 640×360 frames where crops are ~160px wide.
+        # Fix: downscale any frame wider than 1280 to 1280×720 before detection.
+        # Person detection bbox coordinates are then in 1280×720 space; the
+        # offsets passed to crop_meta are also in that space so phone bboxes
+        # are correctly mapped back via the scale factor stored below.
+        DET_MAX_W = 1280
+        proc_frames = []
+        frame_scales = []   # (sx, sy) — original / proc
+        for frame in frames:
+            oh, ow = frame.shape[:2]
+            if ow > DET_MAX_W:
+                sx = ow / DET_MAX_W; sy = oh / (DET_MAX_W * oh // ow)
+                proc = cv2.resize(frame, (DET_MAX_W, DET_MAX_W * oh // ow))
+            else:
+                sx = sy = 1.0; proc = frame
+            proc_frames.append(proc)
+            frame_scales.append((sx, sy))
+
         # ── Pass 1: persons on full frames (batch) ────────────────────────
         with _infer_lock:
-            r1 = _detect_model(frames, verbose=False, conf=CONF_PERSON,
+            r1 = _detect_model(proc_frames, verbose=False, conf=CONF_PERSON,
                                imgsz=416, device=DEVICE, half=HALF,
                                classes=[PERSON])
 
         persons_by_idx = []
         crop_meta = []   # (cam_idx, pe, crop, off_x, off_y, fh, fw)
 
-        for i, (cam, r, frame) in enumerate(zip(cams, r1, frames)):
+        for i, (cam, r, frame) in enumerate(zip(cams, r1, proc_frames)):
             fh, fw = frame.shape[:2]
             persons_raw = []
             if r.boxes:
@@ -695,12 +838,31 @@ class BatchDetectWorker(threading.Thread):
             for bbox, conf, tid in tracked:
                 x1, y1, x2, y2 = bbox; bw, bh = x2-x1, y2-y1
                 standing = bw > 0 and bh / bw > STANDING_RATIO
+                centroid = ((x1+x2)//2, (y1+y2)//2)
                 persons.append({'track_id': tid, 'bbox': bbox, 'conf': conf,
-                                'centroid': ((x1+x2)//2, (y1+y2)//2)})
+                                'centroid': centroid})
                 with cam.tracks_lock:
-                    if tid not in cam.tracks: cam.tracks[tid] = TrackState(tid)
+                    if tid not in cam.tracks:
+                        # ── Phase 3.2: DeskZoneReID — restore session on return ──
+                        ts_new = TrackState(tid)
+                        if _desk_reid is not None:
+                            old_tid = _desk_reid.query(centroid, tid, cam.cam_id)
+                            if old_tid is not None and old_tid in cam.tracks:
+                                old_ts = cam.tracks[old_tid]
+                                ts_new.phone_total_sec     = old_ts.phone_total_sec
+                                ts_new.ev_phone            = old_ts.ev_phone
+                                ts_new.ev_sleep            = old_ts.ev_sleep
+                                if _FUSION_V4 and old_ts.phone_fusion:
+                                    ts_new.phone_fusion = old_ts.phone_fusion
+                                    ts_new.sleep_fusion = old_ts.sleep_fusion
+                                ts_new.last_alert_end_time   = old_ts.last_alert_end_time
+                                ts_new.last_alert_event_type = old_ts.last_alert_event_type
+                                del cam.tracks[old_tid]
+                                _log.debug("[ReID] cam%d: merged track %d → %d",
+                                           cam.cam_id, old_tid, tid)
+                        cam.tracks[tid] = ts_new
                     ts = cam.tracks[tid]
-                    ts.bbox = bbox; ts.centroid = ((x1+x2)//2, (y1+y2)//2)
+                    ts.bbox = bbox; ts.centroid = centroid
                     ts.last_seen = now; ts.standing = standing
 
             persons_by_idx.append(persons)
@@ -843,15 +1005,21 @@ class BatchPoseWorker(threading.Thread):
             if pairs:
                 cams, frames = zip(*pairs)
                 try:
+                    # Downscale high-res frames — same as BatchDetectWorker
+                    proc = []
+                    for f in frames:
+                        oh, ow = f.shape[:2]
+                        proc.append(cv2.resize(f, (1280, 1280*oh//ow)) if ow > 1280 else f)
+
                     with _infer_lock:
                         results = _pose_model(
-                            list(frames), verbose=False, conf=CONF_PERSON,
+                            proc, verbose=False, conf=CONF_PERSON,
                             imgsz=416, device=DEVICE, half=HALF
                         )
-                    for cam, r, frame in zip(cams, results, frames):
+                    for cam, r, pframe in zip(cams, results, proc):
                         persons = cam.state.snapshot()['persons']
                         if persons:
-                            self._update(cam, r, persons, frame.shape[:2])
+                            self._update(cam, r, persons, pframe.shape[:2])
                 except Exception as exc:
                     _log.error("[BatchPose] %s", exc, exc_info=True)
             time.sleep(max(0, 1.5 - (time.time() - t0)))
@@ -863,7 +1031,7 @@ class BatchPoseWorker(threading.Thread):
             xy    = kp.xy[0].cpu().numpy()
             confs = kp.conf[0].cpu().numpy()
             if xy[0][0] == 0 and xy[0][1] == 0: continue
-            tid = self._match(xy[0][0], xy[0][1], persons)
+            tid = self._match(xy[0][0], xy[0][1], persons, frame_h, frame_w)
             if tid is None: continue
             res = self._checks(xy, confs, frame_h, frame_w)
             with cam.tracks_lock:
@@ -875,11 +1043,38 @@ class BatchPoseWorker(threading.Thread):
                     ts.left_wrist    = res['left_wrist']
                     ts.right_wrist   = res['right_wrist']
 
-    def _match(self, nx, ny, persons):
+    def _match(self, nx, ny, persons, frame_h=720, frame_w=1280):
+        """
+        Match a pose keypoint set (identified by nose position) to a tracked person.
+
+        Primary:  nose (nx, ny) must be inside the detection bbox.
+        Fallback: nearest centroid within MAX_DIST pixels.
+
+        BUG FIX (v3.2): At very high resolutions (2560×1440 tested), the
+        YOLOv8-pose model's letterboxing and the YOLOv8s detection model's
+        letterboxing differ slightly, causing the pose nose to land just outside
+        the detection bbox (e.g., nose_y=182 vs bbox top=303 at 1440p).
+        Without the fallback, _match() returns None → phone_on_ear is never
+        set on any track → phone-call alerts never fire at that resolution.
+
+        MAX_DIST scales with the smaller frame dimension (15%) so it stays
+        proportional: 216px@2560×1440, 108px@1280×720, 54px@640×360.
+        """
+        # Primary: nose inside bbox
         for pe in persons:
             x1, y1, x2, y2 = pe['bbox']
-            if x1 <= nx <= x2 and y1 <= ny <= y2: return pe['track_id']
-        return None
+            if x1 <= nx <= x2 and y1 <= ny <= y2:
+                return pe['track_id']
+
+        # Fallback: nearest centroid (handles letterbox offset between models)
+        MAX_DIST = min(frame_h, frame_w) * 0.15   # ~15% of smaller dimension
+        best_dist = MAX_DIST; best_tid = None
+        for pe in persons:
+            cx, cy = pe['centroid']
+            dist = ((nx - cx) ** 2 + (ny - cy) ** 2) ** 0.5
+            if dist < best_dist:
+                best_dist = dist; best_tid = pe['track_id']
+        return best_tid
 
     def _checks(self, xy, confs, h, w):
         C = CONF_KP
@@ -1302,16 +1497,40 @@ class BehaviorEngine(threading.Thread):
         now = time.time(); overlays = []
         with self.cam.tracks_lock: snap = dict(self.cam.tracks)
 
-        # Get current live person positions from detection
         live_snap = self.cam.state.snapshot()
-        # Map: track_id → current bbox (only persons VISIBLE RIGHT NOW)
         live_bbox_by_tid = {pe['track_id']: pe['bbox'] for pe in live_snap['persons']}
 
         for tid, ts in snap.items():
+            # ── Update legacy EvidenceAcc (always maintained for compatibility) ─
             ts.ev_phone.add(ts.phone_raw)
             ts.ev_sleep.add(ts.sleep_raw)
-            phone_ok = ts.ev_phone.confirmed
-            sleep_ok = ts.ev_sleep.confirmed
+
+            # ── Update FusionEngine (v4 — if available) ───────────────────────
+            if _FUSION_V4 and ts.phone_fusion is not None:
+                # Feed YOLO detection confidence into phone fusion
+                yolo_conf = 0.0
+                if ts.phone_type in ('hand', 'ear') and ts.phone_bbox is not None:
+                    # Use stored YOLO confidence from TrackState (best available)
+                    yolo_conf = getattr(ts, '_last_phone_conf', 0.5)
+                ts.phone_fusion.update_yolo(ts.phone_type, yolo_conf)
+                ts.phone_fusion.update_pose(ts.phone_on_ear)
+                ts.sleep_fusion.update(ts.pose_sleeping, not ts.face_visible, ts.is_still)
+
+            # ── Determine confirmed state ──────────────────────────────────────
+            # v4: FusionEngine takes priority when available and confirmed;
+            # falls back to EvidenceAcc for backward compatibility.
+            if _FUSION_V4 and ts.phone_fusion is not None and ts.phone_fusion.confirmed:
+                phone_ok = True
+                # Use fusion-determined type when it differs from YOLO
+                if ts.phone_type is None:
+                    ts.phone_type = ts.phone_fusion.dominant_type
+            else:
+                phone_ok = ts.ev_phone.confirmed
+
+            if _FUSION_V4 and ts.sleep_fusion is not None and ts.sleep_fusion.confirmed:
+                sleep_ok = True
+            else:
+                sleep_ok = ts.ev_sleep.confirmed
 
             # ── CRITICAL: only alert if person is CURRENTLY VISIBLE ──────────
             # Prevents stale tracks (person left/re-tracked) from firing alerts
@@ -1338,17 +1557,31 @@ class BehaviorEngine(threading.Thread):
                         t.phone_last_active = now
 
                         if t.phone_session_start is None:
-                            # ── NEW SESSION: save IMMEDIATE photo ────────────
-                            t.phone_session_start = now
-                            t.phone_session_ptype = ptype
-                            t.phone_session_saved = now
-                            ann_first = annotate_cam(self.cam)
-                            ann_first = _force_red_box(ann_first, t, ptype,
-                                                        self.cam.state.get_frame())
-                            t.phone_session_ann = ann_first
-                            # Fire immediately — "0 sec" photo shows detection start
-                            self._fire(event, ann_first, self._det(t, "phone"),
-                                       0, self.cam.cam_id, self.cam.name)
+                            # ── Phase 6: Alert deduplication ─────────────────
+                            # If same event ended < 60s ago for this track,
+                            # extend the old session rather than create a new alert
+                            _DEDUP_COOLDOWN = 60.0
+                            recent_same = (
+                                t.last_alert_event_type == event and
+                                now - t.last_alert_end_time < _DEDUP_COOLDOWN
+                            )
+                            if not recent_same:
+                                # ── NEW SESSION: save IMMEDIATE photo ────────
+                                t.phone_session_start = now
+                                t.phone_session_ptype = ptype
+                                t.phone_session_saved = now
+                                ann_first = annotate_cam(self.cam)
+                                ann_first = _force_red_box(ann_first, t, ptype,
+                                                            self.cam.state.get_frame())
+                                t.phone_session_ann = ann_first
+                                self._fire(event, ann_first, self._det(t, "phone"),
+                                           0, self.cam.cam_id, self.cam.name)
+                            else:
+                                # Resume: re-open session silently (no duplicate photo)
+                                t.phone_session_start = t.last_alert_end_time
+                                t.phone_session_ptype = ptype
+                                t.phone_session_saved = now
+                                t.phone_session_ann   = None
                         else:
                             # ── ONGOING SESSION: update best frame every 8s ──
                             if now - t.phone_session_saved >= 8:
@@ -1392,6 +1625,12 @@ class BehaviorEngine(threading.Thread):
                                 ann = t.phone_session_ann or annotate_cam(self.cam)
                                 self._fire(event, ann, self._det(t, "phone"),
                                            duration, self.cam.cam_id, self.cam.name)
+                            # Phase 6: record session end for deduplication
+                            t.last_alert_end_time   = t.phone_last_active
+                            t.last_alert_event_type = event
+                            # Phase 3.2: register position for desk re-ID
+                            if _desk_reid is not None and t.centroid:
+                                _desk_reid.register_lost(tid, t.centroid, self.cam.cam_id)
                             t.phone_session_start = None
                             t.phone_last_active   = None
                             t.phone_session_ann   = None
@@ -1524,6 +1763,14 @@ def camera_reader(cam: "CameraSession", startup_delay: float = 0) -> None:
 
             consecutive_fails = 0
             cam.state.set_frame(frame)
+            cam.record_frame()   # Phase 6: update FPS metric
+
+            # Phase 1: feed hard-negative miner (sampled; checks alert state internally)
+            if _hard_neg_miner is not None and _frame_count % 30 == 0:
+                snap = cam.state.snapshot()
+                has_alert = any(ts.phone_session_start is not None
+                                for ts in cam.tracks.values())
+                _hard_neg_miner.push_frame(cam.cam_id, frame, has_alert)
 
             # Write shared frame for web_ui (every 3rd frame ≈ 3fps write rate)
             _frame_count += 1
@@ -1667,19 +1914,79 @@ def _load_camera_configs() -> List[dict]:
 #  MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _check_mode():
+    """
+    --check mode: validate all models load and cameras connect without starting
+    full detection pipeline.  Exits 0 on success, 1 on failure.
+    """
+    import sys
+    _log.info("=== CHECK MODE ===")
+    ok = True
+
+    # Models
+    try:
+        _load_models()
+        _log.info("✓ Models loaded")
+    except Exception as exc:
+        _log.error("✗ Model load failed: %s", exc); ok = False
+
+    # Cameras
+    cfgs = _load_camera_configs()
+    for cfg in cfgs:
+        cam = CameraSession(cfg)
+        url = cam.rtsp_url()
+        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if not cap.isOpened():
+            _log.error("✗ Cannot open camera %s: %s", cfg['name'], url); ok = False
+        else:
+            ret, _ = cap.read()
+            if not ret:
+                _log.warning("⚠  Camera %s opened but no frame", cfg['name'])
+            else:
+                _log.info("✓ Camera %s — OK", cfg['name'])
+        cap.release()
+
+    # Component imports
+    _log.info("v4 tracker  : %s", "✓ active" if _TRACKER_V4  else "✗ tracker.py missing")
+    _log.info("v4 fusion   : %s", "✓ active" if _FUSION_V4   else "✗ fusion.py missing")
+    _log.info("v4 autolabel: %s", "✓ active" if _AUTOLABEL_V4 else "⚠  auto_label.py missing")
+    _log.info("v4 mining   : %s", "✓ active" if _MINING_V4   else "⚠  mining.py missing")
+
+    _log.info("=== CHECK %s ===", "PASSED" if ok else "FAILED")
+    sys.exit(0 if ok else 1)
+
+
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="Employee Monitor v4")
+    ap.add_argument("--check", action="store_true",
+                    help="Validate models and cameras without starting detection")
+    args, _ = ap.parse_known_args()
+    if args.check:
+        _check_mode(); return
+
+    global _hard_neg_miner, _desk_reid
+
     gpu  = torch.cuda.get_device_name(0) if DEVICE == "cuda" else "CPU"
     vram = (torch.cuda.get_device_properties(0).total_memory // 1024 // 1024
             if DEVICE == "cuda" else 0)
 
+    # ── Phase 6: Graceful degradation on low VRAM ─────────────────────────────
+    low_vram = DEVICE == "cuda" and vram < 2048
+    if low_vram:
+        _log.warning("Low VRAM (%d MB < 2GB) — disabling FaceWorker & OllamaVerifier, "
+                     "reducing batch", vram)
+
     _log.info("═" * 65)
-    _log.info("  GPU          : %s  (%d MB)", gpu, vram)
-    _log.info("  Mode         : fp16=%s  imgsz=416  batch-inference", HALF)
-    _log.info("  Detect       : yolov8s  (person + phone in one pass)")
-    _log.info("  Pose         : yolov8n-pose")
-    _log.info("  Tracker      : KalmanTracker  (Hungarian + Kalman prediction)")
-    _log.info("  Camera angle : %s", CAMERA_ANGLE.upper())
-    _log.info("  Standing     : bbox h/w > %s", STANDING_RATIO)
+    _log.info("  GPU          : %s  (%d MB)%s", gpu, vram,
+              "  [LOW VRAM MODE]" if low_vram else "")
+    _log.info("  Tracker      : %s",
+              "ByteTrack-Kalman+ReID (v4)" if _TRACKER_V4 else "KalmanTracker (v3)")
+    _log.info("  Fusion       : %s",
+              "PhoneFusion+SleepFusion (v4)" if _FUSION_V4 else "EvidenceAcc (v3)")
+    _log.info("  AutoLabel    : %s", "active" if _AUTOLABEL_V4 else "disabled")
+    _log.info("  HardNeg      : %s", "active" if _MINING_V4   else "disabled")
     _log.info("═" * 65)
 
     _log.info("Loading shared models...")
@@ -1688,12 +1995,31 @@ def main():
     cfgs    = _load_camera_configs()
     cameras = [CameraSession(c) for c in cfgs]
     n       = len(cameras)
+
+    # Phase 6: warn if too many cameras for idle config
+    if n > 8:
+        _log.warning("%d cameras — enabling aggressive motion-gating to maintain latency", n)
+
     _log.info("Initializing %d camera(s)...", n)
 
+    # ── Phase 3.2: global desk re-ID registry ─────────────────────────────────
+    if _TRACKER_V4:
+        _desk_reid = DeskZoneReID()
+        _log.info("✓ DeskZoneReID registry active")
+
+    # ── Phase 1: v4 data-collection services ──────────────────────────────────
+    if _AUTOLABEL_V4:
+        AutoLabelService().start()
+        _log.info("✓ AutoLabelService started")
+
+    if _MINING_V4:
+        _hard_neg_miner = HardNegativeMiner()
+        _hard_neg_miner.start()
+        _log.info("✓ HardNegativeMiner started")
+
     # Start RTSP reader threads — staggered by 1.5s each
-    # Prevents the NVR from receiving all connection requests simultaneously
     for i, cam in enumerate(cameras):
-        delay = i * 1.5   # 0s, 1.5s, 3s, 4.5s, ...
+        delay = i * 1.5
         t = threading.Thread(target=camera_reader, args=(cam, delay), daemon=True)
         t.start()
 
@@ -1709,31 +2035,38 @@ def main():
     w_detect = BatchDetectWorker(cameras)
     w_pose   = BatchPoseWorker(cameras)
     w_detect.start(); w_pose.start()
-    _log.info("✓ BatchDetectWorker  (yolov8s, all %d cams)", n)
+    _log.info("✓ BatchDetectWorker  (motion-gated, all %d cams)", n)
     _log.info("✓ BatchPoseWorker    (yolov8n-pose, all %d cams)", n)
 
     # Per-camera workers
     for cam in cameras:
         MotionWorker(cam).start()
-        FaceWorker(cam).start()
+        if not low_vram:
+            FaceWorker(cam).start()   # disabled in low-VRAM mode
         BehaviorEngine(cam).start()
         _log.info("✓ Workers for %s", cam.name)
 
-    # Ollama false-positive verifier (runs if USE_OLLAMA=true)
-    OllamaVerifier().start()
-    _log.info("✓ OllamaVerifier")
+    # Ollama false-positive verifier (disabled in low-VRAM mode)
+    if not low_vram:
+        OllamaVerifier().start()
+        _log.info("✓ OllamaVerifier")
 
-    # HEADLESS mode — no local display window needed.
-    # The web dashboard at :5000 is the UI.
+    # Periodic DeskZoneReID cleanup
+    if _desk_reid is not None:
+        def _reid_cleanup():
+            while _running:
+                time.sleep(60)
+                _desk_reid.expire()
+        threading.Thread(target=_reid_cleanup, daemon=True, name="ReIDCleanup").start()
+
     HEADLESS = os.getenv("HEADLESS", "true").lower() != "false"
-    _log.info("Monitoring %d camera(s). Headless=%s. Ctrl+C to stop.", n, HEADLESS)
+    _log.info("Employee Monitor v4 — %d cam(s). Headless=%s. Ctrl+C to stop.",
+              n, HEADLESS)
 
     if HEADLESS:
-        # Production mode: no display window, just keep running
         while _running:
             time.sleep(1)
     else:
-        # Developer mode: show local window (set HEADLESS=false in .env)
         use_grid = n > 1
         while _running:
             if use_grid:
@@ -1747,7 +2080,7 @@ def main():
         cv2.destroyAllWindows()
 
     time.sleep(0.3)
-    print("[INFO] Stopped.")
+    _log.info("Stopped.")
 
 
 if __name__ == "__main__":

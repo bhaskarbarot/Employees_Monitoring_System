@@ -1,0 +1,146 @@
+[2026-06-03 11:26:13 +0530] [3544142] [INFO] Starting gunicorn 26.0.0
+[2026-06-03 11:26:13 +0530] [3544142] [INFO] Listening at: http://0.0.0.0:5000 (3544142)
+[2026-06-03 11:26:13 +0530] [3544142] [INFO] Using worker: gthread
+[2026-06-03 11:26:13 +0530] [3544145] [INFO] Booting worker with pid: 3544145
+[2026-06-03 11:26:13 +0530] [3544142] [INFO] Control socket listening at /run/user/1000/gunicorn.ctl
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 58 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 65 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 213 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 71 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 92 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 34 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 33 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 34 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 66 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 36 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 140 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 28 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 60 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 204 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 92 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 58 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 35 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 16 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 64 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 22 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 305 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 30 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 151 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 843 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 27 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 25 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 35 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 67 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 204 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 19 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 125 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 61 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 61 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 94 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 14 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 33 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 192 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 139 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 178 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 133 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 1022 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 33 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 68 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 43 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 37 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 77 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 41 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 32 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 65 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 34 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 66 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 76 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 31 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 56 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 60 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 34 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 155 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 45 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 103 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 288 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 99 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 123 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 33 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 79 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 22 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 223 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 213 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 65 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 211 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 25 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 45 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 283 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 95 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 546 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 521 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 60 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 66 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 154 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 42 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 60 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 98 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 166 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 64 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 37 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 14 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 104 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 71 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 220 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 69 extraneous bytes before marker 0xd9
+Corrupt JPEG data: 70 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 64 extraneous bytes before marker 0xd9
+Corrupt JPEG data: premature end of data segment
+Corrupt JPEG data: 51 extraneous bytes before marker 0xd9
+[2026-06-03 11:49:32 +0530] [3544145] [INFO] Parent changed, shutting down: <Worker 3544145>
