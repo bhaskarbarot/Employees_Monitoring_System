@@ -59,3 +59,74 @@ set det-size: (160, 160)
   [OllamaVerifier] started — using llava:latest
 16:38:04 [monitor       ] INFO     [Cam-6] D6 — stream open
 16:38:16 [monitor       ] INFO     [Cam-19] D19 — stream open
+16:38:21 [monitor       ] INFO     [Cam-9] D9 — stream open
+[hevc @ 0x7842a4aab040] CABAC_MAX_BIN : 7
+[hevc @ 0x7842a4aab040] The cu_qp_delta 1094995529 is outside the valid range [-26, 25].
+[hevc @ 0x7842a44ac380] The cu_qp_delta -33 is outside the valid range [-26, 25].
+[hevc @ 0x78425cc30540] The cu_qp_delta 32 is outside the valid range [-26, 25].
+[hevc @ 0x78425c6f0540] The cu_qp_delta 59 is outside the valid range [-26, 25].
+[hevc @ 0x78425c870540] The cu_qp_delta -46 is outside the valid range [-26, 25].
+[hevc @ 0x7842105b1500] The cu_qp_delta 62 is outside the valid range [-26, 25].
+[hevc @ 0x7842705a2640] The cu_qp_delta 32 is outside the valid range [-26, 25].
+09:45:21 [monitor       ] INFO     ═════════════════════════════════════════════════════════════════
+09:45:21 [monitor       ] INFO       GPU          : NVIDIA RTX 2000 Ada Generation  (15945 MB)
+09:45:21 [monitor       ] INFO       Mode         : fp16=True  imgsz=416  batch-inference
+09:45:21 [monitor       ] INFO       Detect       : yolov8s  (person + phone in one pass)
+09:45:21 [monitor       ] INFO       Pose         : yolov8n-pose
+09:45:21 [monitor       ] INFO       Tracker      : KalmanTracker  (Hungarian + Kalman prediction)
+09:45:21 [monitor       ] INFO       Camera angle : OVERHEAD
+09:45:21 [monitor       ] INFO       Standing     : bbox h/w > 1.3
+09:45:21 [monitor       ] INFO     ═════════════════════════════════════════════════════════════════
+09:45:21 [monitor       ] INFO     Loading shared models...
+09:45:21 [monitor       ] INFO     [Models] yolov8s.pt → cuda  fp16=True  (COCO person+phone)
+09:45:22 [monitor       ] INFO     [Models] custom_model/weights/best.pt → cuda  (custom phone/sleep classifier)
+09:45:23 [monitor       ] INFO     [Models] *** Custom model active — better phone accuracy ***
+09:45:23 [monitor       ] INFO     [Models] yolov8n-pose.pt → cuda
+09:45:24 [monitor       ] INFO     [Models] ready.
+09:45:24 [monitor       ] INFO     Loaded 4 cameras from cameras.json
+09:45:24 [monitor       ] INFO     Initializing 4 camera(s)...
+09:45:24 [monitor       ] INFO     [Cam-2] D2  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=2&subtype=0
+09:45:24 [monitor       ] INFO     Waiting for cameras...
+09:45:25 [monitor       ] INFO     [Cam-6] D6  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=6&subtype=0
+09:45:27 [monitor       ] INFO     [Cam-9] D9  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=9&subtype=0
+09:45:28 [monitor       ] INFO     [Cam-19] D19  →  rtsp://admin:Masters%406677@192.168.30.5:554/cam/realmonitor?channel=19&subtype=0
+09:45:39 [monitor       ] INFO     0/4 cameras live.
+09:45:39 [monitor       ] INFO     ✓ BatchDetectWorker  (yolov8s, all 4 cams)
+09:45:39 [monitor       ] INFO     ✓ BatchPoseWorker    (yolov8n-pose, all 4 cams)
+09:45:41 [monitor       ] INFO     [Cam-2] D2 — stream open
+/home/elsner/.local/lib/python3.10/site-packages/onnxruntime/capi/onnxruntime_inference_collection.py:123: UserWarning: Specified provider 'CUDAExecutionProvider' is not in available provider names.Available providers: 'AzureExecutionProvider, CPUExecutionProvider'
+  warnings.warn(
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
+set det-size: (160, 160)
+  [Face-2] InsightFace ready
+09:45:42 [monitor       ] INFO     ✓ Workers for D2
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
+set det-size: (160, 160)
+  [Face-6] InsightFace ready
+09:45:42 [monitor       ] INFO     ✓ Workers for D6
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
+set det-size: (160, 160)
+  [Face-9] InsightFace ready
+09:45:42 [monitor       ] INFO     ✓ Workers for D9
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: /home/elsner/.insightface/models/buffalo_sc/det_500m.onnx detection [1, 3, '?', '?'] 127.5 128.0
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+model ignore: /home/elsner/.insightface/models/buffalo_sc/w600k_mbf.onnx recognition
+set det-size: (160, 160)
+  [Face-19] InsightFace ready
+09:45:42 [monitor       ] INFO     ✓ Workers for D19
+09:45:42 [monitor       ] INFO     ✓ OllamaVerifier
+09:45:42 [monitor       ] INFO     Monitoring 4 camera(s). Headless=True. Ctrl+C to stop.
+  [OllamaVerifier] started — using llava:latest
+09:45:50 [monitor       ] INFO     [Cam-6] D6 — stream open
+09:46:01 [monitor       ] INFO     [Cam-19] D19 — stream open
+09:46:16 [monitor       ] INFO     [Cam-9] D9 — stream open
